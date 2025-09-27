@@ -1,0 +1,41 @@
+# Compiled object files
+*.obj
+
+# Executables
+*.exe
+*.dll
+
+# Libraries
+*.lib
+*.exp
+*.ilk
+*.pdb
+
+# Visual Studio auto files
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+*.log
+*.ipch
+*.tlog
+
+# VS Code or other IDE stuff
+.vscode/
+.vs/
+
+# Ignore Visual Studio solution and project files
+*.sln
+*.vcxproj
+*.vcxproj.filters
+
+
+# Build directories (optional)
+Debug/
+Release/
+x64/
+build/   # optional — if you don’t want to track the compiled .lib
+
+# OS/system junk
+Thumbs.db
+.DS_Store
