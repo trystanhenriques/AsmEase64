@@ -11,7 +11,7 @@ SAFE_PROLOGUE MACRO
 ENDM
 
 SAFE_EPILOGUE MACRO
-    add rsp, 40
+    lea rsp, [rsp+40]    ; preserves RFLAGS
     ret
 ENDM
 
