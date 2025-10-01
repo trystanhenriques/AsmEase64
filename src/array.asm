@@ -85,10 +85,42 @@ _in_range:
     RET_OK
 arr_set_value ENDP
 
+; arr_fill(base,len,value)
+; Returns:
+;   CF=0                     ; success
+;   CF=1, EAX = ARR_ERR_*    ; error
+; Errors:
+;   ARR_ERR_NULLPTR     if base == NULL
+;   ARR_ERR_LEN_ZERO    if len  == 0
 arr_fill PROC base:QWORD, len:QWORD, value:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_NULLPTR
+    ; Win64: RCX=base, RDX=len, R8=value
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; Fast fill: rep stosq (writes RAX to [RDI], RCX times)
+    ; RDI is non-volatile on Win64 -> preserve it.
+    push rdi
+    mov  rdi, rcx        ; dest = base
+    mov  rax, r8         ; value to store
+    mov  rcx, rdx        ; count = len (elements)
+    cld                  ; forward direction
+    rep stosq
+    pop  rdi
+
+    RET_OK
 arr_fill ENDP
+
 
 arr_copy PROC dst:QWORD, src:QWORD, len:QWORD
     SAFE_PROLOGUE
