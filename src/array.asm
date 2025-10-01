@@ -3,7 +3,7 @@
 OPTION casemap:none
 OPTION prologue:none, epilogue:none     ; we use SAFE_PROLOGUE/SAFE_EPILOGUE
 
-INCLUDE x64AsmLib.inc
+INCLUDE array.inc
 
 .code
 ; -------------------------
