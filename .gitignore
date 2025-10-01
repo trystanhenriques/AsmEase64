@@ -19,6 +19,7 @@
 *.log
 *.ipch
 *.tlog
+*.editorconfig
 
 # VS Code or other IDE stuff
 .vscode/
