@@ -45,9 +45,44 @@ _in_range:
     RET_OK
 arr_get_value ENDP
 
+;_______________________________________
+; arr_set_value(base,len,index,value)
+;_______________________________________
+; Returns:
+;   CF=0                     ; success
+;   CF=1, EAX = ARR_ERR_*    ; error
+; Errors:
+;   ARR_ERR_NULLPTR     if base == NULL
+;   ARR_ERR_LEN_ZERO    if len  == 0
+;   ARR_ERR_OUTOFRANGE  if index >= len
+;_______________________________________
 arr_set_value PROC base:QWORD, len:QWORD, index:QWORD, value:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_NULLPTR
+    ; Win64 regs:
+    ;    RCX=base, RDX=len, R8=index, R9=value
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; bounds: index < len
+    cmp  r8, rdx
+    jb   _in_range
+      RET_ERR ARR_ERR_OUTOFRANGE
+_in_range:
+
+    ; store the QWORD
+    mov  [rcx + r8*8], r9
+
+    RET_OK
 arr_set_value ENDP
 
 arr_fill PROC base:QWORD, len:QWORD, value:QWORD
