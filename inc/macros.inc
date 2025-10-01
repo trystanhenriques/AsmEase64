@@ -1,3 +1,6 @@
+; header guard
+IFNDEF MACROS_INC_GUARD
+MACROS_INC_GUARD EQU 1
 
 ; Make case sensitive
 OPTION casemap:none
@@ -48,3 +51,5 @@ CHECK_LEN_NONZERO MACRO lenReg:REQ, code:REQ
       RET_ERR code
 @@:
 ENDM
+
+ENDIF ; end header guard
