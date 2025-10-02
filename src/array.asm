@@ -628,5 +628,61 @@ _ret_ok:
     RET_OK
 arr_index_of_smax ENDP
 
+;_______________________________________
+; arr_index_of_smin(base,len)
+;_______________________________________
+; Returns:
+;   CF=0, RAX = index of signed min (two's-complement; first occurrence on ties)
+;   CF=1, EAX = ARR_ERR_*        ; error
+; Errors:
+;   ARR_ERR_NULLPTR  if base == NULL
+;   ARR_ERR_LEN_ZERO if len  == 0
+;_______________________________________
+arr_index_of_smin PROC base:QWORD, len:QWORD
+    SAFE_PROLOGUE
+    ; Win64: RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; current min value in R8 (signed), index in R10
+    mov  r8,  [rcx]          ; min value
+    xor  r10, r10            ; min index = 0
+
+    cmp  rdx, 1
+    je   _ret_ok             ; len==1 -> index 0
+
+    lea  r9,  [rcx+8]        ; ptr to next element
+    mov  r11, 1              ; loop index i = 1
+    mov  rax, rdx
+    dec  rax                 ; remaining = len-1
+
+_loop:
+    mov  rdx, [r9]           ; candidate
+    cmp  rdx, r8
+    jge  _skip               ; signed: update only if candidate < current min
+    mov  r8,  rdx
+    mov  r10, r11
+_skip:
+    add  r9, 8
+    inc  r11
+    dec  rax
+    jnz  _loop
+
+_ret_ok:
+    mov  rax, r10            ; return index
+    RET_OK
+arr_index_of_smin ENDP
+
+
 
 END
