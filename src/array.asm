@@ -317,11 +317,56 @@ _ok:
     RET_OK
 arr_swap ENDP
 
-
+; _____________________________________________________
+; arr_max(base,len)
+; _____________________________________________________
+; Returns:
+;   CF=0, RAX = maximum QWORD value (unsigned compare)
+;   CF=1, EAX = ARR_ERR_*
+; Errors:
+;   ARR_ERR_NULLPTR   if base == NULL
+;   ARR_ERR_LEN_ZERO  if len  == 0
+; Notes:
+;   Unsigned comparison (cmova). Works fine for nonnegative data.
+; _____________________________________________________
 arr_max PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_LEN_ZERO
+    ; RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; RAX := first element
+    mov  rax, [rcx]
+    cmp  rdx, 1
+    je   _ok                      ; single element
+
+    ; scan remaining len-1 elements
+    lea  r10, [rcx+8]             ; ptr to second element
+    mov  r11, rdx
+    dec  r11                      ; remaining count
+
+_max_loop:
+    mov  r9, [r10]
+    cmp  r9, rax
+    cmova rax, r9                  ; unsigned: if r9 > rax, rax = r9
+    add  r10, 8
+    dec  r11
+    jnz  _max_loop
+
+_ok:
+    RET_OK
 arr_max ENDP
+
 
 arr_index_of_max PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
