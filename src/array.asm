@@ -262,11 +262,61 @@ _done_pop_ok:
     RET_OK
 arr_reverse ENDP
 
-
+;_____________________________________________________
+; arr_swap(base,len,i,j)
+;_____________________________________________________
+; Returns:
+;   CF=0                      ; success
+;   CF=1, EAX = ARR_ERR_*     ; error
+; Errors:
+;   ARR_ERR_NULLPTR     if base == NULL
+;   ARR_ERR_LEN_ZERO    if len  == 0
+;   ARR_ERR_OUTOFRANGE  if i >= len or j >= len
+; Notes:
+;   No-op if i == j.
+;_____________________________________________________
 arr_swap PROC base:QWORD, len:QWORD, i:QWORD, j:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_NULLPTR
+    ; Win64: RCX=base, RDX=len, R8=i, R9=j
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; bounds: i < len, j < len
+    cmp  r8, rdx
+    jb   _i_ok
+      RET_ERR ARR_ERR_OUTOFRANGE
+_i_ok:
+    cmp  r9, rdx
+    jb   _j_ok
+      RET_ERR ARR_ERR_OUTOFRANGE
+_j_ok:
+
+    ; same index -> nothing to do
+    cmp  r8, r9
+    je   _ok
+
+    ; swap QWORDs at indices i and j
+    lea  r10, [rcx + r8*8]      ; &base[i]
+    lea  r11, [rcx + r9*8]      ; &base[j]
+    mov  rax, [r10]
+    mov  rdx, [r11]
+    mov  [r10], rdx
+    mov  [r11], rax
+
+_ok:
+    RET_OK
 arr_swap ENDP
+
 
 arr_max PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
