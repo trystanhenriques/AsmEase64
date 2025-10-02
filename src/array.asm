@@ -525,5 +525,53 @@ _ok:
     RET_OK
 arr_smax ENDP
 
+;________________________________________________
+; arr_smin(base,len)
+;________________________________________________
+; Returns:
+;   CF=0, RAX = signed minimum (two's-complement)
+;   CF=1, EAX = ARR_ERR_*        ; error
+; Errors:
+;   ARR_ERR_NULLPTR  if base == NULL
+;   ARR_ERR_LEN_ZERO if len  == 0
+;________________________________________________
+arr_smin PROC base:QWORD, len:QWORD
+    SAFE_PROLOGUE
+    ; Win64: RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; initialize with first element
+    mov  rax, [rcx]          ; current signed min
+
+    ; if only one element, done
+    cmp  rdx, 1
+    je   _ok
+
+    ; scan remaining elements using signed compare
+    lea  r9,  [rcx+8]        ; ptr to next element
+    dec  rdx                 ; remaining count
+_smin_loop:
+    mov  r10, [r9]
+    cmp  r10, rax
+    cmovl rax, r10           ; signed: take if r10 < rax
+    add  r9, 8
+    dec  rdx
+    jnz  _smin_loop
+
+_ok:
+    RET_OK
+arr_smin ENDP
+
 
 END
