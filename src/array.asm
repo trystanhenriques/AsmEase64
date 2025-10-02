@@ -85,13 +85,16 @@ _in_range:
     RET_OK
 arr_set_value ENDP
 
+;__________________________________________________________
 ; arr_fill(base,len,value)
+;__________________________________________________________
 ; Returns:
 ;   CF=0                     ; success
 ;   CF=1, EAX = ARR_ERR_*    ; error
 ; Errors:
 ;   ARR_ERR_NULLPTR     if base == NULL
 ;   ARR_ERR_LEN_ZERO    if len  == 0
+;__________________________________________________________
 arr_fill PROC base:QWORD, len:QWORD, value:QWORD
     SAFE_PROLOGUE
     ; Win64: RCX=base, RDX=len, R8=value
@@ -121,11 +124,87 @@ _len_ok:
     RET_OK
 arr_fill ENDP
 
-
+;__________________________________________________________
+; arr_copy(dst, src, len)
+;__________________________________________________________
+; Returns:
+;   CF=0                      ; success
+;   CF=1, EAX = ARR_ERR_*     ; error
+; Errors:
+;   ARR_ERR_NULLPTR     if dst == NULL or src == NULL
+;   ARR_ERR_LEN_ZERO    if len  == 0
+; Behavior:
+;   QWORD-wise copy of len elements (8 bytes each).
+;   Overlap-safe (memmove semantics): chooses direction automatically.
+;__________________________________________________________
 arr_copy PROC dst:QWORD, src:QWORD, len:QWORD
     SAFE_PROLOGUE
+    ; Win64: RCX=dst, RDX=src, R8=len
+
+    ; dst and src must be non-NULL
+    test rcx, rcx
+    jz   _null_err
+    test rdx, rdx
+    jz   _null_err
+
+    ; len must be > 0
+    test r8, r8
+    jz   _len_zero
+
+    ; dst == src -> no-op
+    cmp  rcx, rdx
+    je   _ok
+
+    ; size in bytes = len * 8
+    lea  r9, [r8*8]          ; r9 = byteCount
+
+    ; Overlap check:
+    ; If dst < src           -> forward copy
+    ; If dst >= src+size     -> forward copy (no overlap)
+    ; Else (dst in [src,src+size)) -> backward copy
+    mov  r10, rcx            ; r10 = dst
+    cmp  r10, rdx
+    jb   _forward            ; dst < src
+
+    lea  r11, [rdx + r9]     ; r11 = src_end
+    cmp  r10, r11
+    jae  _forward            ; dst >= src_end -> no overlap
+
+    ; ---- backward copy (overlap with dst > src) ----
+    push rdi                 ; preserve non-volatiles
+    push rsi
+    lea  rdi, [rcx + r9 - 8] ; dest = dst + (len-1)*8
+    lea  rsi, [rdx + r9 - 8] ; src  = src + (len-1)*8
+    mov  rcx, r8             ; count = len (elements)
+    std
+    rep movsq
+    cld
+    pop  rsi
+    pop  rdi
+    jmp  _ok
+
+_forward:
+    ; ---- forward copy ----
+    push rdi
+    push rsi
+    mov  rdi, rcx            ; dest = dst
+    mov  rsi, rdx            ; src  = src
+    mov  rcx, r8             ; count = len
+    cld
+    rep movsq
+    pop  rsi
+    pop  rdi
+
+_ok:
+    RET_OK
+
+_null_err:
     RET_ERR ARR_ERR_NULLPTR
+
+_len_zero:
+    RET_ERR ARR_ERR_LEN_ZERO
 arr_copy ENDP
+
 
 arr_reverse PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
