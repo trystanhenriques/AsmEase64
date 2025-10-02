@@ -367,6 +367,58 @@ _ok:
     RET_OK
 arr_max ENDP
 
+;__________________________________________
+; arr_min(base,len)
+;__________________________________________
+; Returns:
+;   CF=0, RAX = min (unsigned compare)
+;   CF=1, EAX = ARR_ERR_*    ; error
+; Errors:
+;   ARR_ERR_NULLPTR  if base == NULL
+;   ARR_ERR_LEN_ZERO if len  == 0
+; Notes:
+;   Compares as UNSIGNED (use cmovb). For signed variant, use arr_smin.
+;__________________________________________
+arr_min PROC base:QWORD, len:QWORD
+    SAFE_PROLOGUE
+    ; Win64: RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; Initialize min with first element
+    mov  rax, [rcx]          ; current min in RAX
+
+    ; If only one element, we’re done
+    cmp  rdx, 1
+    je   _ok
+
+    ; Walk the rest: pointer in R9, count in RDX (len-1), temp in R10
+    lea  r9,  [rcx+8]        ; next element
+    dec  rdx                  ; remaining count
+_min_loop:
+    mov  r10, [r9]
+    cmp  r10, rax
+    cmovb rax, r10            ; unsigned: take if r10 < rax
+    add  r9, 8
+    dec  rdx
+    jnz  _min_loop
+
+_ok:
+    RET_OK
+arr_min ENDP
+
+
+
 ;_________________________________________
 ; arr_index_of_max(base,len)
 ;_________________________________________

@@ -40,6 +40,7 @@ arr_swap           PROTO :QWORD, :QWORD, :QWORD, :QWORD   ; (base, len, i, j)
 
 ; queries (UNSIGNED semantics)
 arr_max            PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=max
+arr_min            PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=min (unsigned)
 arr_index_of_max   PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=index
 arr_index_of_min   PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=index
 
