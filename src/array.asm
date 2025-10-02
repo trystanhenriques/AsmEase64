@@ -205,16 +205,118 @@ _len_zero:
     RET_ERR ARR_ERR_LEN_ZERO
 arr_copy ENDP
 
-
+;____________________________________________
+; arr_reverse(base,len)
+;____________________________________________
+; Returns:
+;   CF=0                      ; success
+;   CF=1, EAX = ARR_ERR_*     ; error
+; Errors:
+;   ARR_ERR_NULLPTR     if base == NULL
+;   ARR_ERR_LEN_ZERO    if len  == 0
+;____________________________________________
 arr_reverse PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_NULLPTR
+    ; Win64: RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; Preserve non-volatiles we will use (RDI, RSI)
+    push rdi
+    push rsi
+
+    ; Pointers to the ends
+    mov  rdi, rcx                    ; left  = base
+    lea  rsi, [rcx + rdx*8 - 8]      ; right = base + (len-1)*8
+
+    ; Number of swaps = len / 2
+    mov  rcx, rdx
+    shr  rcx, 1
+    jz   _done_pop_ok                ; len==1 (or 0, but zero handled above)
+
+_rev_loop:
+    ; swap *rdi and *rsi (QWORD)
+    mov  rax, [rdi]
+    mov  r10, [rsi]
+    mov  [rdi], r10
+    mov  [rsi], rax
+
+    add  rdi, 8
+    sub  rsi, 8
+    dec  rcx
+    jnz  _rev_loop
+
+_done_pop_ok:
+    pop  rsi
+    pop  rdi
+    RET_OK
 arr_reverse ENDP
 
+;_____________________________________________________
+; arr_swap(base,len,i,j)
+;_____________________________________________________
+; Returns:
+;   CF=0                      ; success
+;   CF=1, EAX = ARR_ERR_*     ; error
+; Errors:
+;   ARR_ERR_NULLPTR     if base == NULL
+;   ARR_ERR_LEN_ZERO    if len  == 0
+;   ARR_ERR_OUTOFRANGE  if i >= len or j >= len
+; Notes:
+;   No-op if i == j.
+;_____________________________________________________
 arr_swap PROC base:QWORD, len:QWORD, i:QWORD, j:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_NULLPTR
+    ; Win64: RCX=base, RDX=len, R8=i, R9=j
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; bounds: i < len, j < len
+    cmp  r8, rdx
+    jb   _i_ok
+      RET_ERR ARR_ERR_OUTOFRANGE
+_i_ok:
+    cmp  r9, rdx
+    jb   _j_ok
+      RET_ERR ARR_ERR_OUTOFRANGE
+_j_ok:
+
+    ; same index -> nothing to do
+    cmp  r8, r9
+    je   _ok
+
+    ; swap QWORDs at indices i and j
+    lea  r10, [rcx + r8*8]      ; &base[i]
+    lea  r11, [rcx + r9*8]      ; &base[j]
+    mov  rax, [r10]
+    mov  rdx, [r11]
+    mov  [r10], rdx
+    mov  [r11], rax
+
+_ok:
+    RET_OK
 arr_swap ENDP
+
 
 arr_max PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
