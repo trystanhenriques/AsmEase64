@@ -38,10 +38,17 @@ arr_copy           PROTO :QWORD, :QWORD, :QWORD          ; (dst, src, len)
 arr_reverse        PROTO :QWORD, :QWORD                   ; (base, len)
 arr_swap           PROTO :QWORD, :QWORD, :QWORD, :QWORD   ; (base, len, i, j)
 
-; queries
+; queries (UNSIGNED semantics)
 arr_max            PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=max
 arr_index_of_max   PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=index
 arr_index_of_min   PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=index
+
+; queries (SIGNED semantics)
+arr_smax           PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=max (signed)
+arr_smin           PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=min (signed)
+arr_index_of_smax  PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=index (first signed max)
+arr_index_of_smin  PROTO :QWORD, :QWORD                   ; (base, len) -> RAX=index (first signed min)
+
 
 ; NOTE: arr_insert requires capacity & an extra arg (value) on stack; we’ll add it after core ops.
 ; arr_insert      PROTO :QWORD, :QWORD, :QWORD, :QWORD, :QWORD ; (base, pLen, capacity, index, value) [value may live on stack]
