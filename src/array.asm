@@ -367,16 +367,116 @@ _ok:
     RET_OK
 arr_max ENDP
 
-
+;_________________________________________
+; arr_index_of_max(base,len)
+;_________________________________________
+; Returns:
+;   CF=0, RAX = index of maximum element (unsigned compare; first occurrence on ties)
+;   CF=1, EAX = ARR_ERR_*    ; error
+; Errors:
+;   ARR_ERR_NULLPTR  if base == NULL
+;   ARR_ERR_LEN_ZERO if len  == 0
+;_________________________________________
 arr_index_of_max PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_LEN_ZERO 
+    ; Win64: RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; Track current max value in R8, index in R10
+    mov  r8,  [rcx]          ; current max value
+    xor  r10, r10            ; current max index = 0
+
+    cmp  rdx, 1
+    je   _ret_ok             ; len==1 -> index 0
+
+    lea  r9,  [rcx+8]        ; ptr to next element
+    mov  r11, 1              ; loop index i = 1
+    mov  rax, rdx
+    dec  rax                 ; remaining = len-1
+
+_loop:
+    mov  rdx, [r9]           ; candidate
+    cmp  rdx, r8
+    jbe  _skip               ; unsigned: only update if candidate > current max
+    mov  r8,  rdx
+    mov  r10, r11
+_skip:
+    add  r9, 8
+    inc  r11
+    dec  rax
+    jnz  _loop
+
+_ret_ok:
+    mov  rax, r10            ; return index
+    RET_OK
 arr_index_of_max ENDP
 
+;_____________________________________________________________
+; arr_index_of_min(base,len)
+;_____________________________________________________________
+; Returns:
+;   CF=0, RAX = index of minimum element (unsigned compare; first occurrence on ties)
+;   CF=1, EAX = ARR_ERR_*    ; error
+; Errors:
+;   ARR_ERR_NULLPTR  if base == NULL
+;   ARR_ERR_LEN_ZERO if len  == 0
+;_____________________________________________________________
 arr_index_of_min PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    RET_ERR ARR_ERR_LEN_ZERO
+    ; Win64: RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; current min value in R8, index in R10
+    mov  r8,  [rcx]          ; min value
+    xor  r10, r10            ; min index = 0
+
+    cmp  rdx, 1
+    je   _ret_ok             ; len==1 -> index 0
+
+    lea  r9,  [rcx+8]        ; ptr to next element
+    mov  r11, 1              ; loop index i = 1
+    mov  rax, rdx
+    dec  rax                 ; remaining = len-1
+
+_loop:
+    mov  rdx, [r9]           ; candidate
+    cmp  rdx, r8
+    jae  _skip               ; unsigned: update only if candidate < min
+    mov  r8,  rdx
+    mov  r10, r11
+_skip:
+    add  r9, 8
+    inc  r11
+    dec  rax
+    jnz  _loop
+
+_ret_ok:
+    mov  rax, r10            ; return index
+    RET_OK
 arr_index_of_min ENDP
+
 
 
 END
