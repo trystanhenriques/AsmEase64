@@ -477,6 +477,53 @@ _ret_ok:
     RET_OK
 arr_index_of_min ENDP
 
+;________________________________________________________________
+; arr_smax(base,len)
+;________________________________________________________________
+; Returns:
+;   CF=0, RAX = signed maximum (two's-complement, first occurrence on ties)
+;   CF=1, EAX = ARR_ERR_*        ; error
+; Errors:
+;   ARR_ERR_NULLPTR  if base == NULL
+;   ARR_ERR_LEN_ZERO if len  == 0
+;________________________________________________________________
+arr_smax PROC base:QWORD, len:QWORD
+    SAFE_PROLOGUE
+    ; Win64: RCX=base, RDX=len
+
+    ; base must be non-NULL
+    test rcx, rcx
+    jnz  _base_ok
+      RET_ERR ARR_ERR_NULLPTR
+_base_ok:
+
+    ; len must be > 0
+    test rdx, rdx
+    jnz  _len_ok
+      RET_ERR ARR_ERR_LEN_ZERO
+_len_ok:
+
+    ; initialize with first element
+    mov  rax, [rcx]          ; current signed max
+
+    ; if only one element, done
+    cmp  rdx, 1
+    je   _ok
+
+    ; scan remaining elements using signed compare
+    lea  r9,  [rcx+8]        ; ptr to next element
+    dec  rdx                 ; remaining count
+_smax_loop:
+    mov  r10, [r9]
+    cmp  r10, rax
+    cmovg rax, r10           ; signed: take if r10 > rax
+    add  r9, 8
+    dec  rdx
+    jnz  _smax_loop
+
+_ok:
+    RET_OK
+arr_smax ENDP
 
 
 END
