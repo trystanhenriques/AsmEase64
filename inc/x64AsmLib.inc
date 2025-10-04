@@ -18,6 +18,7 @@ EXTERN WriteConsoleA:PROC
 
 ; pull in all finished modules
 INCLUDE array.inc
+INCLUDE string.inc
 
 
 
