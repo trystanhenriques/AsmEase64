@@ -52,4 +52,13 @@ CHECK_LEN_NONZERO MACRO lenReg:REQ, code:REQ
 @@:
 ENDM
 
+; Ensure "needed" bytes fit within "cap" bytes; else return code
+CHECK_CAPACITY MACRO needReg:REQ, capReg:REQ, code:REQ
+    cmp needReg, capReg
+    jbe @F
+      RET_ERR code
+@@:
+ENDM
+
+
 ENDIF ; end header guard
