@@ -5,6 +5,7 @@ STRING_INC_GUARD EQU 1
 OPTION casemap:none
 
 INCLUDE macros.inc
+INCLUDE errors.inc
 
 ; --- shared error codes are defined once in array.inc (ARR_ERR_*)
 ;     this module returns CF/EAX using the same codes.
