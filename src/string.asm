@@ -67,7 +67,7 @@ str_reverse PROC base:QWORD, len:QWORD
     RET_ERR ARR_ERR_NULLPTR
 str_reverse ENDP
 
-str_fill PROC base:QWORD, len:QWORD, ch:QWORD
+str_fill PROC base:QWORD, len:QWORD, ch8:QWORD
     SAFE_PROLOGUE
     ; body pending
     RET_ERR ARR_ERR_NULLPTR
@@ -77,7 +77,7 @@ str_fill ENDP
 ; Search & Replace
 ; =====================
 
-str_find_char PROC base:QWORD, len:QWORD, ch:QWORD
+str_find_char PROC base:QWORD, len:QWORD, ch8:QWORD
     SAFE_PROLOGUE
     ; body pending
     RET_ERR ARR_ERR_NULLPTR
