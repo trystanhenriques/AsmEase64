@@ -6,8 +6,9 @@ MYLIB_INC_GUARD EQU 1
 ; make case sensitive
 OPTION casemap:none
 
-; include shared macros
+; include shared macros and errors
 INCLUDE macros.inc
+INCLUDE errors.inc
 
 ; common Win32 libs we will need later
 INCLUDELIB kernel32.lib

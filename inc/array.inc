@@ -5,13 +5,7 @@ ARRAY_INC_GUARD EQU 1
 OPTION casemap:none
 
 INCLUDE macros.inc
-
-; --- error codes (returned in EAX when CF=1)
-ARR_OK                EQU 0    ; success (no error); operation completed, CF will be clear.
-ARR_ERR_NULLPTR       EQU 1    ; a required pointer argument (ex. base/src/dst) was NULL (0).
-ARR_ERR_OUTOFRANGE    EQU 2    ; index/offset was out of bounds (not in [0, len).
-ARR_ERR_LEN_ZERO      EQU 3    ; length was zero where a non-empty array is required.
-ARR_ERR_CAPACITY      EQU 4    ; insufficient capacity for the operation (ex. insert/append/shift).
+INCLUDE errors.inc
 
 ; _______________________________________________________
 ; Array API (QWORD elements; signed/unsigned OK)
