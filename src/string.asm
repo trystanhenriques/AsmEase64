@@ -15,12 +15,12 @@ INCLUDE string.inc
 ; str_copy(dst, dst_cap, src, src_len)
 ;________________________________________
 ; Returns:
-;   CF=0, RAX = new length (== src_len)   ; success
-;   CF=1, EAX = ARR_ERR_*                 ; error
+;   CF=0, RAX = new length (== src_len)     ; success
+;   CF=1, EAX = ERR_*                       ; error
 ; Errors:
-;   ARR_ERR_NULLPTR    if dst == NULL or src == NULL
-;   ARR_ERR_LEN_ZERO   if src_len == 0
-;   ARR_ERR_CAPACITY   if src_len > dst_cap
+;   ERR_NULLPTR    if dst == NULL or src == NULL
+;   ERR_LEN_ZERO   if src_len == 0
+;   ERR_CAPACITY   if src_len > dst_cap
 ; Notes:
 ;   - Copies exactly src_len bytes (no terminator added).
 ;   - Overlap-safe (memmove semantics): direction chosen automatically.
@@ -31,14 +31,14 @@ str_copy PROC dst:QWORD, dst_cap:QWORD, src:QWORD, src_len:QWORD
     ; Win64: RCX=dst, RDX=dst_cap, R8=src, R9=src_len
 
     ; required pointers
-    CHECK_NULL rcx, ARR_ERR_NULLPTR        ; dst
-    CHECK_NULL r8,  ARR_ERR_NULLPTR        ; src
+    CHECK_NULL rcx, ERR_NULLPTR        ; dst
+    CHECK_NULL r8,  ERR_NULLPTR        ; src
 
     ; src_len must be > 0
-    CHECK_LEN_NONZERO r9, ARR_ERR_LEN_ZERO
+    CHECK_LEN_NONZERO r9, ERR_LEN_ZERO
 
     ; capacity: src_len <= dst_cap
-    CHECK_CAPACITY r9, rdx, ARR_ERR_CAPACITY
+    CHECK_CAPACITY r9, rdx, ERR_CAPACITY
 
     ; keep return value in r11, free RAX for byte moves
     mov  r11, r9            ; r11 = src_len (return)
@@ -92,6 +92,7 @@ sc_bw_loop:
     mov  rax, r11
     RET_OK
 str_copy ENDP
+
 
 ; WIll implement this later!!!!!! 5 arg mess!
 ;str_concat PROC dst:QWORD, dst_len:QWORD, dst_cap:QWORD, src:QWORD, src_len:QWORD
