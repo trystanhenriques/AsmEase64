@@ -93,12 +93,12 @@ sc_bw_loop:
     RET_OK
 str_copy ENDP
 
-
-str_concat PROC dst:QWORD, dst_len:QWORD, dst_cap:QWORD, src:QWORD, src_len:QWORD
-    SAFE_PROLOGUE
+; WIll implement this later!!!!!! 5 arg mess!
+;str_concat PROC dst:QWORD, dst_len:QWORD, dst_cap:QWORD, src:QWORD, src_len:QWORD
+    ;SAFE_PROLOGUE
     ; body pending
-    RET_ERR ARR_ERR_NULLPTR
-str_concat ENDP
+    ;RET_ERR ARR_ERR_NULLPTR
+;str_concat ENDP
 
 ; =====================
 ; Length & Compare
