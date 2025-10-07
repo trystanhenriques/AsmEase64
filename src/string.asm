@@ -393,11 +393,59 @@ stu_next:
 str_to_upper ENDP
 
 
+;________________________________________
+; str_to_lower(base, len)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to process)
+;
+; Returns (success):
+;   CF=0, RAX = len processed (== len)
+;
+; Returns (error):
+;   CF=1, EAX = ERR_* 
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - ASCII-only transform: bytes in ['A'(0x41) .. 'Z'(0x5A)] are mapped to
+;     lowercase by adding 0x20. All other bytes are left unchanged.
+;   - Binary-safe (no terminator added/required).
+;   - len==0 is allowed and returns 0 (success).
+;________________________________________
 str_to_lower PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate pointer
+    CHECK_NULL rcx, ERR_NULLPTR      ; base
+
+    ; quick return for empty spans
+    test    rdx, rdx
+    jnz     stl_nonempty
+    xor     rax, rax
+    RET_OK
+
+stl_nonempty:
+    mov     rdi, rcx                 ; rdi = write/read ptr
+    mov     rcx, rdx                 ; rcx = count
+    mov     rax, rdx                 ; rax = return value (len)
+
+stl_loop:
+    movzx   r8d, byte ptr [rdi]      ; r8b = current byte
+    cmp     r8b, 'A'                 ; < 'A' ?
+    jb      stl_next
+    cmp     r8b, 'Z'                 ; > 'Z' ?
+    ja      stl_next
+    add     r8b, 20h                 ; 'A'..'Z' -> 'a'..'z'
+    mov     byte ptr [rdi], r8b
+stl_next:
+    inc     rdi
+    dec     rcx
+    jnz     stl_loop
+
+    RET_OK
 str_to_lower ENDP
+
 
 str_reverse PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
