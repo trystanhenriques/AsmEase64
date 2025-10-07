@@ -447,11 +447,58 @@ stl_next:
 str_to_lower ENDP
 
 
+;________________________________________
+; str_reverse(base, len)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to reverse)
+;
+; Returns (success):
+;   CF=0, RAX = len
+;
+; Returns (error):
+;   CF=1, EAX = ERR_*
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - Binary-safe: treats bytes as raw; no terminator required/added.
+;   - len==0 or len==1 => no-op with success.
+;   - Uses two-pointer swap from ends; O(len), in-place.
+;________________________________________
 str_reverse PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate pointer
+    CHECK_NULL rcx, ERR_NULLPTR          ; base
+
+    ; quick outs
+    mov     rax, rdx                     ; return = len
+    test    rdx, rdx
+    jz      sr_done_ok                   ; len==0
+    cmp     rdx, 1
+    je      sr_done_ok                   ; len==1
+
+    ; rdi -> front, rsi -> back, rcx = swaps = len/2
+    mov     rdi, rcx                     ; rdi = base
+    lea     rsi, [rcx + rdx - 1]         ; rsi = base + len - 1
+    mov     rcx, rdx
+    shr     rcx, 1                       ; number of swaps
+
+sr_loop:
+    mov     r8b,  [rdi]
+    mov     r9b,  [rsi]
+    mov     [rdi], r9b
+    mov     [rsi], r8b
+    inc     rdi
+    dec     rsi
+    dec     rcx
+    jnz     sr_loop
+
+sr_done_ok:
+    RET_OK
 str_reverse ENDP
+
 
 str_fill PROC base:QWORD, len:QWORD, ch8:QWORD
     SAFE_PROLOGUE
