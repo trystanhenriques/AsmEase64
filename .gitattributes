@@ -17,3 +17,5 @@
 *.pdb binary
 *.dll binary
 *.exe binary
+
+*.asm linguist-language=NASM
