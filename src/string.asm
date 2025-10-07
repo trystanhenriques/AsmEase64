@@ -105,17 +105,139 @@ str_copy ENDP
 ; Length & Compare
 ; =====================
 
-str_length PROC base:QWORD, max_scan:QWORD
+;________________________________________
+; str_length(src, max_len)
+;________________________________________
+; RCX = src (pointer to bytes)
+; RDX = max_len (scan limit, in bytes)
+; Returns:
+;   CF=0, RAX = number of bytes before first 0x00, up to max_len
+;   CF=1, EAX = ERR_*                ; error
+; Errors:
+;   ERR_NULLPTR   if src == NULL
+;   ERR_LEN_ZERO  if max_len == 0
+; Notes:
+;   - Binary-safe 'strnlen': if no NUL within max_len, returns max_len.
+;   - Does NOT read past max_len.
+;________________________________________
+str_length PROC src:QWORD, max_len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate
+    CHECK_NULL        rcx, ERR_NULLPTR      ; src
+    CHECK_LEN_NONZERO rdx, ERR_LEN_ZERO     ; max_len > 0
+
+    ; scan for NUL up to max_len
+    mov   rsi, rcx            ; keep base
+    mov   rdi, rcx            ; scan ptr
+    mov   rcx, rdx            ; count = max_len
+    xor   eax, eax            ; AL = 0
+    cld
+    repne scasb               ; stops if ZF==1 (found) or RCX==0 (not found)
+
+    jnz   sl_not_found        ; ZF==0 => no NUL within max_len
+
+    ; found: RDI points just past matched NUL
+    mov   rax, rdi
+    sub   rax, rsi            ; bytes including the NUL
+    dec   rax                 ; exclude the NUL itself
+    RET_OK
+
+sl_not_found:
+    ; no NUL in window -> length == max_len (RDX unchanged)
+    mov   rax, rdx
+    RET_OK
 str_length ENDP
 
+
+;________________________________________
+; str_compare(a, a_len, b, b_len)
+;________________________________________
+; RCX = a       (pointer to bytes)
+; RDX = a_len   (bytes to compare from a)
+; R8  = b       (pointer to bytes)
+; R9  = b_len   (bytes to compare from b)
+;
+; Returns (success):
+;   CF=0, RAX =  0  if a == b (same bytes and same length)
+;   CF=0, RAX = -1  if a  < b (first differing byte in a is smaller, unsigned compare;
+;                              or a is a proper prefix of b)
+;   CF=0, RAX =  1  if a  > b (first differing byte in a is larger, unsigned compare;
+;                              or b is a proper prefix of a)
+;
+; Returns (error):
+;   CF=1, EAX = ERR_* 
+; Errors:
+;   ERR_NULLPTR  if a == NULL or b == NULL
+;
+; Notes:
+;   - Binary-safe: compares raw bytes (unsigned 0..255). NULs are treated like any byte.
+;   - No length restrictions: a_len and/or b_len may be zero.
+;   - Reading only (no writes); overlap between a and b is harmless.
+;________________________________________
+;________________________________________
+; str_compare(a, a_len, b, b_len)
+; See earlier comment block for full contract.
+;________________________________________
 str_compare PROC a:QWORD, a_len:QWORD, b:QWORD, b_len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; ---- validate pointers ----
+    CHECK_NULL rcx, ERR_NULLPTR      ; a
+    CHECK_NULL r8,  ERR_NULLPTR      ; b
+
+    ; ---- set up ----
+    mov     rsi, rcx                 ; rsi = a
+    mov     rdi, r8                  ; rdi = b
+
+    ; rcx = min(a_len, b_len)  [**FIXED INIT**]
+    mov     r10, rdx                 ; r10 = a_len
+    mov     r11, r9                  ; r11 = b_len
+    mov     rcx, r10                 ; rcx = a_len (init)
+    cmp     r10, r11
+    cmova   rcx, r11                 ; if a_len > b_len -> rcx = b_len
+
+    ; If min len is zero, skip byte compare and decide by lengths
+    test    rcx, rcx
+    jz      sc_len_only
+
+    ; ---- byte-wise compare, unsigned ----
+    cld
+    repe    cmpsb                    ; stop on mismatch (ZF=0) or rcx==0 (prefix equal)
+    jne     sc_mismatch              ; ZF=0 => differing byte
+
+    ; Prefix equal up to min length -> decide by lengths
+sc_len_only:
+    cmp     r10, r11
+    je      sc_equal
+    jb      sc_a_lt_b                ; a shorter prefix -> a<b
+    jmp     sc_a_gt_b                ; a longer        -> a>b
+
+sc_mismatch:
+    ; rsi/rdi advanced past the differing byte; compare previous bytes unsigned
+    movzx   eax, byte ptr [rsi-1]    ; A byte (0..255)
+    movzx   edx, byte ptr [rdi-1]    ; B byte (0..255)
+    cmp     eax, edx
+    jb      sc_a_lt_b
+    ja      sc_a_gt_b
+    ; (defensive)
+    jmp     sc_equal
+
+sc_equal:
+    xor     eax, eax                 ; 0
+    RET_OK
+
+sc_a_lt_b:
+    mov     rax, -1                  ; **64-bit -1**
+    RET_OK
+
+sc_a_gt_b:
+    mov     rax, 1                   ; **64-bit +1**
+    RET_OK
+
 str_compare ENDP
+
+
 
 ; =====================
 ; In-place transforms
