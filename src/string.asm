@@ -393,23 +393,158 @@ stu_next:
 str_to_upper ENDP
 
 
+;________________________________________
+; str_to_lower(base, len)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to process)
+;
+; Returns (success):
+;   CF=0, RAX = len processed (== len)
+;
+; Returns (error):
+;   CF=1, EAX = ERR_* 
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - ASCII-only transform: bytes in ['A'(0x41) .. 'Z'(0x5A)] are mapped to
+;     lowercase by adding 0x20. All other bytes are left unchanged.
+;   - Binary-safe (no terminator added/required).
+;   - len==0 is allowed and returns 0 (success).
+;________________________________________
 str_to_lower PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate pointer
+    CHECK_NULL rcx, ERR_NULLPTR      ; base
+
+    ; quick return for empty spans
+    test    rdx, rdx
+    jnz     stl_nonempty
+    xor     rax, rax
+    RET_OK
+
+stl_nonempty:
+    mov     rdi, rcx                 ; rdi = write/read ptr
+    mov     rcx, rdx                 ; rcx = count
+    mov     rax, rdx                 ; rax = return value (len)
+
+stl_loop:
+    movzx   r8d, byte ptr [rdi]      ; r8b = current byte
+    cmp     r8b, 'A'                 ; < 'A' ?
+    jb      stl_next
+    cmp     r8b, 'Z'                 ; > 'Z' ?
+    ja      stl_next
+    add     r8b, 20h                 ; 'A'..'Z' -> 'a'..'z'
+    mov     byte ptr [rdi], r8b
+stl_next:
+    inc     rdi
+    dec     rcx
+    jnz     stl_loop
+
+    RET_OK
 str_to_lower ENDP
 
+
+;________________________________________
+; str_reverse(base, len)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to reverse)
+;
+; Returns (success):
+;   CF=0, RAX = len
+;
+; Returns (error):
+;   CF=1, EAX = ERR_*
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - Binary-safe: treats bytes as raw; no terminator required/added.
+;   - len==0 or len==1 => no-op with success.
+;   - Uses two-pointer swap from ends; O(len), in-place.
+;________________________________________
 str_reverse PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate pointer
+    CHECK_NULL rcx, ERR_NULLPTR          ; base
+
+    ; quick outs
+    mov     rax, rdx                     ; return = len
+    test    rdx, rdx
+    jz      sr_done_ok                   ; len==0
+    cmp     rdx, 1
+    je      sr_done_ok                   ; len==1
+
+    ; rdi -> front, rsi -> back, rcx = swaps = len/2
+    mov     rdi, rcx                     ; rdi = base
+    lea     rsi, [rcx + rdx - 1]         ; rsi = base + len - 1
+    mov     rcx, rdx
+    shr     rcx, 1                       ; number of swaps
+
+sr_loop:
+    mov     r8b,  [rdi]
+    mov     r9b,  [rsi]
+    mov     [rdi], r9b
+    mov     [rsi], r8b
+    inc     rdi
+    dec     rsi
+    dec     rcx
+    jnz     sr_loop
+
+sr_done_ok:
+    RET_OK
 str_reverse ENDP
 
-str_fill PROC base:QWORD, len:QWORD, ch8:QWORD
+
+;________________________________________
+; str_fill(base, len, ch)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to write)
+; R8  = byteval    (byte value to store; low 8 bits used)
+;
+; Returns (success):
+;   CF=0, RAX = len
+;
+; Returns (error):
+;   CF=1, EAX = ERR_*
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - Binary-safe: writes exactly 'len' bytes of value (R8B).
+;   - len==0 is allowed (no writes), returns 0 with success.
+;________________________________________
+str_fill PROC base:QWORD, len:QWORD, byteval:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate
+    CHECK_NULL rcx, ERR_NULLPTR          ; base
+
+    ; return value = len
+    mov     rax, rdx
+    test    rdx, rdx
+    jz      sf_done_ok                   ; nothing to write
+
+    ; rdi = dst, rcx = count, r9b = byte to write
+    mov     rdi, rcx
+    mov     rcx, rdx
+    mov     r9b, r8b
+
+sf_loop:
+    mov     byte ptr [rdi], r9b
+    inc     rdi
+    dec     rcx
+    jnz     sf_loop
+
+sf_done_ok:
+    RET_OK
 str_fill ENDP
+
 
 ; =====================
 ; Search & Replace
