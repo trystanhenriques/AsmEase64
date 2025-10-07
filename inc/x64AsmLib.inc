@@ -10,16 +10,11 @@ OPTION casemap:none
 INCLUDE macros.inc
 INCLUDE errors.inc
 
-; common Win32 libs we will need later
-INCLUDELIB kernel32.lib
-EXTERN ExitProcess:PROC
-EXTERN GetStdHandle:PROC
-EXTERN WriteConsoleA:PROC
 
 ; pull in all finished modules
 INCLUDE array.inc
 INCLUDE string.inc
-
+INCLUDE io.inc
 
 
 ; header guard end
