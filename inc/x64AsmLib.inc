@@ -14,7 +14,7 @@ INCLUDE errors.inc
 ; pull in all finished modules
 INCLUDE array.inc
 INCLUDE string.inc
-
+INCLUDE io.inc
 
 
 ; header guard end
