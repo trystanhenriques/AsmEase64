@@ -105,11 +105,50 @@ str_copy ENDP
 ; Length & Compare
 ; =====================
 
-str_length PROC base:QWORD, max_scan:QWORD
+;________________________________________
+; str_length(src, max_len)
+;________________________________________
+; RCX = src (pointer to bytes)
+; RDX = max_len (scan limit, in bytes)
+; Returns:
+;   CF=0, RAX = number of bytes before first 0x00, up to max_len
+;   CF=1, EAX = ERR_*                ; error
+; Errors:
+;   ERR_NULLPTR   if src == NULL
+;   ERR_LEN_ZERO  if max_len == 0
+; Notes:
+;   - Binary-safe 'strnlen': if no NUL within max_len, returns max_len.
+;   - Does NOT read past max_len.
+;________________________________________
+str_length PROC src:QWORD, max_len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate
+    CHECK_NULL        rcx, ERR_NULLPTR      ; src
+    CHECK_LEN_NONZERO rdx, ERR_LEN_ZERO     ; max_len > 0
+
+    ; scan for NUL up to max_len
+    mov   rsi, rcx            ; keep base
+    mov   rdi, rcx            ; scan ptr
+    mov   rcx, rdx            ; count = max_len
+    xor   eax, eax            ; AL = 0
+    cld
+    repne scasb               ; stops if ZF==1 (found) or RCX==0 (not found)
+
+    jnz   sl_not_found        ; ZF==0 => no NUL within max_len
+
+    ; found: RDI points just past matched NUL
+    mov   rax, rdi
+    sub   rax, rsi            ; bytes including the NUL
+    dec   rax                 ; exclude the NUL itself
+    RET_OK
+
+sl_not_found:
+    ; no NUL in window -> length == max_len (RDX unchanged)
+    mov   rax, rdx
+    RET_OK
 str_length ENDP
+
 
 str_compare PROC a:QWORD, a_len:QWORD, b:QWORD, b_len:QWORD
     SAFE_PROLOGUE
