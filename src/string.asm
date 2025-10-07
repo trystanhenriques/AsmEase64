@@ -603,10 +603,63 @@ sfc_notfound:
 str_find_char ENDP
 
 
-str_replace_char PROC base:QWORD, len:QWORD, from:QWORD, to:QWORD
+;________________________________________
+; str_replace_char(base, len, oldch, newch)
+;________________________________________
+; RCX = base   (pointer to bytes; modified in-place)
+; RDX = len    (bytes to scan)
+; R8  = oldch  (target byte; low 8 bits used)
+; R9  = newch  (replacement byte; low 8 bits used)
+;
+; Returns (success):
+;   CF=0, RAX = number of bytes replaced (0..len)
+;
+; Returns (error):
+;   CF=1, EAX = ERR_*
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - Binary-safe (NUL is just a byte).
+;   - len==0 is allowed and returns 0 (success).
+;   - If oldch == newch, buffer is left unchanged; RAX = count of occurrences.
+;________________________________________
+str_replace_char PROC base:QWORD, len:QWORD, oldch:QWORD, newch:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate
+    CHECK_NULL rcx, ERR_NULLPTR          ; base
+
+    ; fast path for empty span
+    xor     rax, rax                     ; rax = replacement count
+    test    rdx, rdx
+    jz      src_done_ok
+
+    ; setup
+    mov     rdi, rcx                     ; rdi = p
+    mov     rcx, rdx                     ; rcx = remaining
+    mov     r10b, r8b                    ; r10b = oldch
+    mov     r11b, r9b                    ; r11b = newch
+
+    ; loop
+src_loop:
+    mov     r8b, [rdi]
+    cmp     r8b, r10b
+    jne     src_next
+    ; match
+    cmp     r10b, r11b
+    je      src_count_only               ; old==new: don't write, just count
+    mov     [rdi], r11b
+src_count_only:
+    inc     rax
+src_next:
+    inc     rdi
+    dec     rcx
+    jnz     src_loop
+
+src_done_ok:
+    RET_OK
 str_replace_char ENDP
+
 
 END
