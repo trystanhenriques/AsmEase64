@@ -239,17 +239,159 @@ str_compare ENDP
 ; In-place transforms
 ; =====================
 
+;________________________________________
+; str_trim(base, len)
+;________________________________________
+; RCX = base  (pointer to bytes, modified in-place)
+; RDX = len   (number of bytes to examine)
+;
+; Returns (success):
+;   CF=0, RAX = new_len after removing leading/trailing ASCII whitespace:
+;               bytes in {0x20, 0x09..0x0D} at both ends are removed.
+;               Middle whitespace is preserved. Data is left-shifted if needed.
+;
+; Returns (error):
+;   CF=1, EAX = ERR_* 
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - Binary-safe; does NOT append a terminator.
+;   - Overlap-safe by construction (dst < src -> forward copy).
+;   - len == 0 is allowed and returns 0 (success).
+;________________________________________
 str_trim PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate pointer
+    CHECK_NULL rcx, ERR_NULLPTR          ; base
+
+    ; quick exit: empty input -> length 0
+    test    rdx, rdx
+    jnz     st_nonempty
+    xor     rax, rax                     ; new_len = 0
+    RET_OK
+
+st_nonempty:
+    ; r10 = i (leading index), r11 = j (trailing end = len)
+    xor     r10, r10                     ; i = 0
+    mov     r11, rdx                     ; j = len
+
+    ; ---- trim leading ----
+st_lead_loop:
+    cmp     r10, r11
+    jae     st_all_trimmed               ; all whitespace -> length 0
+    mov     al, [rcx + r10]              ; AL = base[i]
+    ; is_whitespace := (AL == 0x20) || (0x09 <= AL <= 0x0D)
+    cmp     al, 20h
+    je      st_lead_inc
+    cmp     al, 09h
+    jb      st_lead_done
+    cmp     al, 0Dh
+    jbe     st_lead_inc
+    jmp     st_lead_done
+
+st_lead_inc:
+    inc     r10
+    jmp     st_lead_loop
+
+st_lead_done:
+    ; ---- trim trailing ----
+st_trail_loop:
+    cmp     r11, r10
+    jbe     st_all_trimmed               ; nothing but whitespace
+    mov     al, [rcx + r11 - 1]          ; AL = base[j-1]
+    cmp     al, 20h
+    je      st_trail_dec
+    cmp     al, 09h
+    jb      st_trail_done
+    cmp     al, 0Dh
+    jbe     st_trail_dec
+    jmp     st_trail_done
+
+st_trail_dec:
+    dec     r11
+    jmp     st_trail_loop
+
+st_trail_done:
+    ; new_len = j - i
+    mov     rax, r11
+    sub     rax, r10
+    ; if i==0 or new_len==0, no move needed
+    test    rax, rax
+    jz      st_ret_ok
+    test    r10, r10
+    jz      st_ret_ok
+
+    ; shift left: dst = base, src = base + i, count = new_len
+    mov     rdi, rcx                     ; dst
+    lea     rsi, [rcx + r10]             ; src
+    mov     rcx, rax                     ; count
+    cld
+    rep movsb                            ; forward copy safe (dst < src)
+
+st_ret_ok:
+    RET_OK
+
+st_all_trimmed:
+    xor     rax, rax                     ; 0
+    RET_OK
 str_trim ENDP
 
+
+;________________________________________
+; str_to_upper(base, len)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to process)
+;
+; Returns (success):
+;   CF=0, RAX = len processed (== len)
+;
+; Returns (error):
+;   CF=1, EAX = ERR_* 
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - ASCII-only transform: bytes in ['a'(0x61) .. 'z'(0x7A)] are mapped to
+;     uppercase by subtracting 0x20. All other bytes are left unchanged.
+;   - Binary-safe (no terminator added/required).
+;   - len==0 is allowed and returns 0 (success).
+;________________________________________
 str_to_upper PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate pointer
+    CHECK_NULL rcx, ERR_NULLPTR      ; base
+
+    ; quick return for empty spans
+    test    rdx, rdx
+    jnz     stu_nonempty
+    xor     rax, rax
+    RET_OK
+
+stu_nonempty:
+    mov     rdi, rcx                 ; rdi = write/read ptr
+    mov     rcx, rdx                 ; rcx = count
+    mov     rax, rdx                 ; rax = return value (len)
+
+stu_loop:
+    movzx   r8d, byte ptr [rdi]      ; r8b = current byte
+    cmp     r8b, 'a'                 ; < 'a' ?
+    jb      stu_next
+    cmp     r8b, 'z'                 ; > 'z' ?
+    ja      stu_next
+    sub     r8b, 20h                 ; 'a'..'z' -> 'A'..'Z'
+    mov     byte ptr [rdi], r8b
+stu_next:
+    inc     rdi
+    dec     rcx
+    jnz     stu_loop
+
+    RET_OK
 str_to_upper ENDP
+
 
 str_to_lower PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
