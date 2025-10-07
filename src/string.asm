@@ -500,11 +500,51 @@ sr_done_ok:
 str_reverse ENDP
 
 
-str_fill PROC base:QWORD, len:QWORD, ch8:QWORD
+;________________________________________
+; str_fill(base, len, ch)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to write)
+; R8  = byteval    (byte value to store; low 8 bits used)
+;
+; Returns (success):
+;   CF=0, RAX = len
+;
+; Returns (error):
+;   CF=1, EAX = ERR_*
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - Binary-safe: writes exactly 'len' bytes of value (R8B).
+;   - len==0 is allowed (no writes), returns 0 with success.
+;________________________________________
+str_fill PROC base:QWORD, len:QWORD, byteval:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate
+    CHECK_NULL rcx, ERR_NULLPTR          ; base
+
+    ; return value = len
+    mov     rax, rdx
+    test    rdx, rdx
+    jz      sf_done_ok                   ; nothing to write
+
+    ; rdi = dst, rcx = count, r9b = byte to write
+    mov     rdi, rcx
+    mov     rcx, rdx
+    mov     r9b, r8b
+
+sf_loop:
+    mov     byte ptr [rdi], r9b
+    inc     rdi
+    dec     rcx
+    jnz     sf_loop
+
+sf_done_ok:
+    RET_OK
 str_fill ENDP
+
 
 ; =====================
 ; Search & Replace
