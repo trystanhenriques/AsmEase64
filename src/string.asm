@@ -175,10 +175,6 @@ str_length ENDP
 ;   - No length restrictions: a_len and/or b_len may be zero.
 ;   - Reading only (no writes); overlap between a and b is harmless.
 ;________________________________________
-;________________________________________
-; str_compare(a, a_len, b, b_len)
-; See earlier comment block for full contract.
-;________________________________________
 str_compare PROC a:QWORD, a_len:QWORD, b:QWORD, b_len:QWORD
     SAFE_PROLOGUE
 
