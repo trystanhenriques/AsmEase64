@@ -339,11 +339,59 @@ st_all_trimmed:
 str_trim ENDP
 
 
+;________________________________________
+; str_to_upper(base, len)
+;________________________________________
+; RCX = base  (pointer to bytes; modified in-place)
+; RDX = len   (bytes to process)
+;
+; Returns (success):
+;   CF=0, RAX = len processed (== len)
+;
+; Returns (error):
+;   CF=1, EAX = ERR_* 
+; Errors:
+;   ERR_NULLPTR  if base == NULL
+;
+; Notes:
+;   - ASCII-only transform: bytes in ['a'(0x61) .. 'z'(0x7A)] are mapped to
+;     uppercase by subtracting 0x20. All other bytes are left unchanged.
+;   - Binary-safe (no terminator added/required).
+;   - len==0 is allowed and returns 0 (success).
+;________________________________________
 str_to_upper PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
-    ; body pending
-    RET_ERR ARR_ERR_NULLPTR
+
+    ; validate pointer
+    CHECK_NULL rcx, ERR_NULLPTR      ; base
+
+    ; quick return for empty spans
+    test    rdx, rdx
+    jnz     stu_nonempty
+    xor     rax, rax
+    RET_OK
+
+stu_nonempty:
+    mov     rdi, rcx                 ; rdi = write/read ptr
+    mov     rcx, rdx                 ; rcx = count
+    mov     rax, rdx                 ; rax = return value (len)
+
+stu_loop:
+    movzx   r8d, byte ptr [rdi]      ; r8b = current byte
+    cmp     r8b, 'a'                 ; < 'a' ?
+    jb      stu_next
+    cmp     r8b, 'z'                 ; > 'z' ?
+    ja      stu_next
+    sub     r8b, 20h                 ; 'a'..'z' -> 'A'..'Z'
+    mov     byte ptr [rdi], r8b
+stu_next:
+    inc     rdi
+    dec     rcx
+    jnz     stu_loop
+
+    RET_OK
 str_to_upper ENDP
+
 
 str_to_lower PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
