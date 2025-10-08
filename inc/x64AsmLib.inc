@@ -6,6 +6,8 @@ MYLIB_INC_GUARD EQU 1
 ; make case sensitive
 OPTION casemap:none
 
+ExitProcess    PROTO :DWORD
+
 ; include shared macros and errors
 INCLUDE macros.inc
 INCLUDE errors.inc
