@@ -9,7 +9,7 @@ OPTION casemap:none
 ; include shared macros and errors
 INCLUDE macros.inc
 INCLUDE errors.inc
-
+INCLUDE win32_console.inc
 
 ; pull in all finished modules
 INCLUDE array.inc
