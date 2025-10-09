@@ -11,6 +11,9 @@ STD_OUTPUT_HANDLE  EQU -11
 EXTERN GetStdHandle:PROC
 EXTERN WriteConsoleA:PROC
 EXTERN ReadConsoleA:PROC
+EXTERN WriteFile:PROC
+EXTERN GetStdHandle:PROC
+
 EXTERN ExitProcess:PROC
 
 ; Make sure kernel32 gets linked by consumers that include this
