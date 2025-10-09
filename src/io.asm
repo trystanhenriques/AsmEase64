@@ -37,18 +37,12 @@ crlf_len        EQU ($-crlf_bytes)
 io_init PROC
     SAFE_PROLOGUE
 
-    ; stdout
     mov   ecx, STD_OUTPUT_HANDLE
-    sub   rsp, 20h                     ; shadow space for WinAPI
     call  GetStdHandle
-    add   rsp, 20h
     mov   [g_stdout], rax
 
-    ; stdin
     mov   ecx, STD_INPUT_HANDLE
-    sub   rsp, 20h
     call  GetStdHandle
-    add   rsp, 20h
     mov   [g_stdin], rax
 
     mov   dword ptr [g_io_inited], 1
@@ -57,43 +51,37 @@ io_init PROC
 io_init ENDP
 
 
+
 ;=========================================================
 ; Helpers (private)
 ;=========================================================
 
-; Ensure stdout handle available in RAX
+; Ensure stdout handle available in RAX (lazy)
 _io_get_stdout PROC
-    ; no prologue: internal leaf, uses caller's stack frame
-    mov     eax, [g_io_inited]
-    test    eax, eax
-    jnz     @F
-        ; lazy init stdout only
-        mov   ecx, STD_OUTPUT_HANDLE
-        sub   rsp, 20h
-        call  GetStdHandle
-        add   rsp, 20h
-        mov   [g_stdout], rax
-        mov   dword ptr [g_io_inited], 1
-@@:
+    SAFE_PROLOGUE
     mov     rax, [g_stdout]
-    ret
+    test    rax, rax
+    jnz     @done
+    mov     ecx, STD_OUTPUT_HANDLE
+    call    GetStdHandle
+    mov     [g_stdout], rax
+@done:
+    SAFE_EPILOGUE
 _io_get_stdout ENDP
 
-; Ensure stdin handle available in RAX
+; Ensure stdin handle available in RAX (lazy)
 _io_get_stdin PROC
-    mov     eax, [g_io_inited]
-    test    eax, eax
-    jnz     @F
-        mov   ecx, STD_INPUT_HANDLE
-        sub   rsp, 20h
-        call  GetStdHandle
-        add   rsp, 20h
-        mov   [g_stdin], rax
-        mov   dword ptr [g_io_inited], 1
-@@:
+    SAFE_PROLOGUE
     mov     rax, [g_stdin]
-    ret
+    test    rax, rax
+    jnz     @done
+    mov     ecx, STD_INPUT_HANDLE
+    call    GetStdHandle
+    mov     [g_stdin], rax
+@done:
+    SAFE_EPILOGUE
 _io_get_stdin ENDP
+
 
 
 ;=========================================================
@@ -173,11 +161,38 @@ io_print_reg PROC value:QWORD, flags:QWORD
 io_print_reg ENDP
 
 
+;________________________________________
+; io_print_newline()
+;________________________________________
+; Returns:
+;   CF=0, RAX = bytes written (2 for CRLF); best-effort (0 on failure)
+; Notes:
+;   - Uses WriteFile so it works with console or redirected stdout (pipes/files).
+;   - No need to call io_init(); stdout fetched lazily.
+;________________________________________
 io_print_newline PROC
     SAFE_PROLOGUE
-    xor rax, rax
+    call  _io_get_stdout            ; RAX = handle
+
+    ; WriteFile(h, "\r\n", 2, &written, NULL)
+    mov   rcx, rax                  ; hFile
+    lea   rdx, crlf_bytes           ; lpBuffer
+    mov   r8d, 2                    ; nNumberOfBytesToWrite
+    lea   r9,  [rsp+18h]            ; LPDWORD lpNumberOfBytesWritten  (use shadow space!)
+    mov   qword ptr [rsp+20h], 0    ; LPOVERLAPPED = NULL (5th arg)
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    @fail
+    mov   eax, dword ptr [rsp+18h]  ; bytes written (should be 2)
+    RET_OK
+@fail:
+    xor   eax, eax
     RET_OK
 io_print_newline ENDP
+
+
 
 
 ;=========================================================
