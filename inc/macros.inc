@@ -5,13 +5,14 @@ MACROS_INC_GUARD EQU 1
 ; Make case sensitive
 OPTION casemap:none
 
-; Reserve 32 bytes shadow space + 8 for 16-byte alignment at any nested call site
+; 32 bytes shadow + 8 for alignment = 40 bytes (0x28)
 SAFE_PROLOGUE MACRO
-    sub rsp, 40
+    sub rsp, 28h
 ENDM
 
+; Preserve RFLAGS
 SAFE_EPILOGUE MACRO
-    lea rsp, [rsp+40]    ; preserves RFLAGS
+    lea rsp, [rsp+28h]   ; LEA does not modify flags
     ret
 ENDM
 
