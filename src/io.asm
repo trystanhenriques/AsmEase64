@@ -89,11 +89,49 @@ _io_get_stdin ENDP
 ;=========================================================
 
 
-io_print_char PROC byteval:QWORD
+;________________________________________
+; io_print_char(byteVal)
+;________________________________________
+; RCX = byteVal (low 8 bits used)
+; Returns:
+;   CF=0, RAX = bytes written (1 on success, 0 on failure)
+; Errors:
+;   (none for now; best-effort write)
+; Notes:
+;   - Binary-safe: will attempt to write any byte (0x00..0xFF).
+;   - Uses WriteFile so it works with console *or* redirected stdout.
+;   - Does not require io_init(); stdout fetched lazily.
+;________________________________________
+io_print_char PROC byteVal:QWORD
     SAFE_PROLOGUE
-    xor rax, rax
+
+    ; snapshot 'ch' before calling helpers (RCX will be clobbered by calls)
+    mov   r10, rcx                  ; r10b = character to write
+
+    ; fetch stdout handle (works for console or pipe)
+    call  _io_get_stdout            ; RAX = handle
+
+    ; store the one byte on our shadow space to pass a pointer to WriteFile
+    mov   byte ptr [rsp+10h], r10b  ; 1-byte temp inside our 32B shadow
+
+    ; WriteFile(h, &byte, 1, &written, NULL)
+    mov   rcx, rax                  ; hFile
+    lea   rdx, [rsp+10h]            ; lpBuffer -> our 1-byte temp
+    mov   r8d, 1                    ; nNumberOfBytesToWrite
+    lea   r9,  [rsp+18h]            ; lpNumberOfBytesWritten (DWORD in shadow)
+    mov   qword ptr [rsp+20h], 0    ; lpOverlapped = NULL (5th arg)
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    ipc_fail
+    mov   eax, dword ptr [rsp+18h]  ; should be 1
+    RET_OK
+ipc_fail:
+    xor   eax, eax
     RET_OK
 io_print_char ENDP
+
 
 
 io_print_string PROC buf:QWORD, len:QWORD
