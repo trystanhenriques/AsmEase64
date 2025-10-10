@@ -134,15 +134,101 @@ io_print_char ENDP
 
 
 
+;________________________________________
+; io_print_string(buf, len)
+;________________________________________
+; RCX = buf (pointer to bytes)
+; RDX = len (number of bytes to write)
+; Returns (success):
+;   CF=0, RAX = bytes written (may be 0 if len==0)
+; Returns (error):
+;   CF=1, EAX = ERR_NULLPTR   if len>0 and buf == NULL
+; Notes:
+;   - Binary-safe: writes exactly 'len' bytes (no terminator).
+;   - Uses WriteFile so it works with console or redirected stdout.
+;   - Fast path for len <= 0xFFFFFFFF (single WriteFile), slow path otherwise.
+;________________________________________
 io_print_string PROC buf:QWORD, len:QWORD
     SAFE_PROLOGUE
-    test rdx, rdx
-    jz   ips_ok
-    CHECK_NULL rcx, ERR_NULLPTR        ; rcx == buf
-ips_ok:
-    xor  rax, rax
+
+    ; snapshot args immediately (param symbols are invalid after prologue)
+    mov   r10, rcx                 ; r10 = buf
+    mov   r11, rdx                 ; r11 = len
+
+    ; len == 0 -> success, 0 bytes
+    test  r11, r11
+    jnz   ips_nonzero
+    xor   eax, eax
+    RET_OK
+
+ips_nonzero:
+    ; if we need to write, buf must be non-NULL
+    CHECK_NULL r10, ERR_NULLPTR
+
+    ; fetch stdout handle, stash in our shadow space
+    call  _io_get_stdout           ; RAX = handle
+    mov   [rsp+08h], rax           ; save handle (8 bytes inside shadow)
+
+    ; ---- fast path: one call if len <= 0xFFFFFFFF ----
+    mov   rax, 0FFFFFFFFh
+    cmp   r11, rax
+    ja    ips_slow_path
+
+    mov   rcx, [rsp+08h]           ; hFile
+    mov   rdx, r10                 ; lpBuffer
+    mov   r8d, r11d                ; nBytes (DWORD)
+    lea   r9,  [rsp+18h]           ; &written (DWORD in shadow)
+    mov   qword ptr [rsp+20h], 0   ; lpOverlapped = NULL
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    ips_fast_zero
+    mov   eax, dword ptr [rsp+18h] ; bytes written
+    RET_OK
+ips_fast_zero:
+    xor   eax, eax
+    RET_OK
+
+    ; ---- slow path: chunking for >4GiB ----
+ips_slow_path:
+    xor   rax, rax                 ; total = 0
+ips_loop:
+    test  r11, r11
+    jz    ips_done
+
+    ; chunk = min(remaining=r11, 0xFFFFFFFF)
+    mov   ecx, 0FFFFFFFFh          ; ECX = max DWORD
+    cmp   r11, rcx
+    cmovbe rcx, r11                ; ECX = (r11 <= max) ? r11 : max
+
+    mov   rcx, [rsp+08h]           ; hFile
+    mov   rdx, r10                 ; lpBuffer
+    mov   r8d, ecx                 ; nBytes (DWORD)
+    lea   r9,  [rsp+18h]           ; &written
+    mov   qword ptr [rsp+20h], 0
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    ips_done                 ; treat failure as short write
+
+    mov   edx, dword ptr [rsp+18h] ; written (zero-extends to RDX)
+    test  edx, edx
+    jz    ips_done
+
+    add   rax, rdx                 ; total += written
+    add   r10, rdx                 ; buf   += written
+    sub   r11, rdx                 ; remaining -= written
+    jmp   ips_loop
+
+ips_done:
     RET_OK
 io_print_string ENDP
+
+
+
+
 
 
 
