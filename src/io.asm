@@ -411,11 +411,114 @@ io_print_uint ENDP
 
 
 
+;________________________________________
+; io_print_hex(value, min_digits)
+;________________________________________
+; RCX = value (u64)
+; RDX = min_digits (0..16, clamped to 16)
+; Returns (success):
+;   CF=0, RAX = bytes written
+; Returns (failure):
+;   CF=0, RAX = 0   (best-effort; we don’t CF=1 on write failure)
+; Notes:
+;   - Uppercase hex (A..F).
+;   - No "0x" prefix.
+;   - If value==0 and min_digits==0 -> prints "0" (1 digit).
+;   - Otherwise prints max(actual_digits, min_digits) with leading zeros as needed.
+;   - Uses WriteFile, so it works with console or redirected stdout.
+; Stack (after SAFE_PROLOGUE then locals: sub rsp,40h):
+;   [rsp+00..+1F]  shadow space
+;   [rsp+08]       cached stdout handle (QWORD)
+;   [rsp+18]       DWORD bytesWritten
+;   [rsp+20]       5th arg (lpOverlapped=NULL)
+;   [rsp+30..+5F]  48-byte local buffer; we write digits from the end backward
+;________________________________________
 io_print_hex PROC value:QWORD, min_digits:QWORD
     SAFE_PROLOGUE
-    xor rax, rax
+    sub   rsp, 40h
+
+    ; cache stdout handle
+    call  _io_get_stdout
+    mov   [rsp+08h], rax
+
+    ; snapshot args
+    mov   r11, rcx               ; r11 = value (u64)
+    mov   r10d, edx              ; r10d = min_digits (lower 32b enough)
+
+    ; clamp min_digits to [0..16]
+    cmp   r10d, 16
+    jbe   ihx_md_ok
+      mov   r10d, 16
+ihx_md_ok:
+
+    ; write pointer at end of local buffer
+    lea   r9,  [rsp+5Fh]         ; r9 = write ptr for last digit
+    xor   eax, eax
+    mov   ecx, eax               ; ecx = digit count
+
+    ; zero fast path
+    test  r11, r11
+    jnz   ihx_build
+      mov   byte ptr [r9], '0'
+      mov   ecx, 1
+      jmp   ihx_pad
+
+ihx_build:
+    ; produce digits by nibbles (LSB first, written backward)
+ihx_loop:
+    mov   rax, r11
+    and   eax, 0Fh               ; nibble in AL (0..15)
+    cmp   al, 9
+    jbe   ihx_digit_09
+      add   al, ('A' - 10)
+      jmp   ihx_store
+ihx_digit_09:
+      add   al, '0'
+ihx_store:
+    mov   byte ptr [r9], al
+    inc   ecx                    ; digit count++
+    dec   r9
+    shr   r11, 4                 ; value >>= 4
+    test  r11, r11
+    jnz   ihx_loop
+
+    ; need to advance r9 back to the last stored digit position
+    inc   r9                     ; r9 now points to first digit
+
+ihx_pad:
+    ; ensure at least min_digits (leading zeros)
+    ; while (count < min_digits) { *--start = '0'; ++count; }
+    cmp   ecx, r10d
+    jae   ihx_len_ready
+ihx_pad_loop:
+    dec   r9
+    mov   byte ptr [r9], '0'
+    inc   ecx
+    cmp   ecx, r10d
+    jb    ihx_pad_loop
+
+ihx_len_ready:
+    ; start = r9, len = ecx
+    mov   eax, ecx               ; len -> EAX (DWORD)
+
+    ; WriteFile(handle, start, len, &written, NULL)
+    mov   rcx, [rsp+08h]         ; hFile
+    mov   rdx, r9                ; lpBuffer
+    mov   r8d, eax               ; nBytes (DWORD)
+    lea   r9,  [rsp+18h]         ; &written (DWORD in shadow)
+    mov   qword ptr [rsp+20h], 0 ; lpOverlapped = NULL
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    ihx_done_zero
+    mov   eax, dword ptr [rsp+18h] ; bytes written
+
+ihx_done_zero:
+    lea   rsp, [rsp+40h]
     RET_OK
 io_print_hex ENDP
+
 
 
 io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
