@@ -239,11 +239,87 @@ io_print_int PROC value:QWORD
 io_print_int ENDP
 
 
+;________________________________________
+; io_print_uint(value)
+;________________________________________
+; RCX = value (unsigned 64-bit)
+; Returns (success):
+;   CF=0, RAX = bytes written (digit count)
+; Returns (failure):
+;   CF=0, RAX = 0 (best-effort; no ERR_* for write issues)
+; Notes:
+;   - Minimal decimal, no leading zeros; zero prints "0".
+;   - Uses WriteFile (works with console or redirected stdout).
+;   - Stack layout with SAFE_PROLOGUE (sub rsp,28h), then locals (sub rsp,40h):
+;       [rsp+00..+1F]  shadow space for calls
+;       [rsp+08]       (we stash stdout handle here)
+;       [rsp+18]       DWORD bytesWritten
+;       [rsp+20]       5th arg (lpOverlapped=NULL)
+;       [rsp+30..+5F]  48-byte local digit buffer (we use end at +5F)
+;________________________________________
 io_print_uint PROC value:QWORD
     SAFE_PROLOGUE
-    xor rax, rax
+
+    ; reserve 64 bytes for locals (keeps 16B alignment)
+    sub   rsp, 40h
+
+    ; fetch stdout handle once
+    call  _io_get_stdout               ; RAX = handle
+    mov   [rsp+08h], rax               ; stash handle in shadow space
+
+    ; set up reverse-digit builder using the local buffer above shadow:
+    ; buffer = [rsp+30 .. rsp+5F], we start from the very end (rsp+5F)
+    mov   r11, rcx                     ; r11 = value (u64)
+    lea   r10, [rsp+5Fh]               ; r10 = write ptr (last byte in buffer)
+
+    ; zero special-case -> "0"
+    test  r11, r11
+    jnz   ipu_build
+    mov   byte ptr [r10], '0'
+    mov   r9,  r10                     ; start
+    mov   eax, 1                       ; len
+    jmp   ipu_write
+
+ipu_build:
+    mov   r8d, 10                      ; r8 = 10 (64-bit reg)
+ipu_loop:
+    xor   rdx, rdx                     ; RDX:RAX / 10  (128/64 div uses full RAX)
+    mov   rax, r11                     ; RAX = value (u64)
+    div   r8                            ; quotient -> RAX (u64), remainder -> RDX (u64)
+    mov   dl, dl                       ; (no-op; just to make it clear we use DL)
+    add   dl, '0'                      ; remainder -> ASCII
+    mov   byte ptr [r10], dl
+    dec   r10
+    mov   r11, rax                     ; value = quotient
+    test  r11, r11
+    jnz   ipu_loop
+
+
+    ; compute start (r10+1) and len using 64-bit pointer arithmetic
+    lea   r9,  [r10+1]                 ; start
+    lea   rax, [rsp+60h]               ; one past end of buffer
+    sub   rax, r9                      ; len = end - start  (64-bit safe)
+
+ipu_write:
+    ; WriteFile(h, start, len, &written, NULL)
+    mov   rcx, [rsp+08h]               ; hFile
+    mov   rdx, r9                      ; lpBuffer
+    mov   r8d, eax                     ; nBytes (DWORD)
+    lea   r9,  [rsp+18h]               ; &written (DWORD in shadow)
+    mov   qword ptr [rsp+20h], 0       ; lpOverlapped = NULL
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    ipu_done_zero
+    mov   eax, dword ptr [rsp+18h]     ; bytes written
+
+ipu_done_zero:
+    lea   rsp, [rsp+40h]               ; release locals, preserve flags
     RET_OK
 io_print_uint ENDP
+
+
 
 
 io_print_hex PROC value:QWORD, min_digits:QWORD
