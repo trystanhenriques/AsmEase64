@@ -528,11 +528,102 @@ io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
 io_print_float ENDP
 
 
+;________________________________________
+; io_print_binary(value, min_bits)
+;________________________________________
+; RCX = value (u64)
+; RDX = min_bits (0..64, will be clamped to 64)
+; Returns (success):
+;   CF=0, RAX = bytes written
+; Returns (failure):
+;   CF=0, RAX = 0   (best-effort; we don’t CF=1 on write failure)
+; Notes:
+;   - Prints uppercase '0'/'1', MSB-first.
+;   - No "0b" prefix.
+;   - Width rule: max(actual_bits, min_bits); if value==0 and min_bits==0 => "0".
+;   - Uses WriteFile (works with console or redirected stdout).
+; Stack (SAFE_PROLOGUE sub rsp,28h; locals sub rsp,80h):
+;   [rsp+00..+1F]  shadow space
+;   [rsp+08]       cached stdout handle (QWORD)
+;   [rsp+18]       DWORD bytesWritten
+;   [rsp+20]       5th arg (lpOverlapped=NULL)
+;   [rsp+30..+9F]  112-byte local buffer; we use end at +9F so up to 64 bits fit
+;________________________________________
 io_print_binary PROC value:QWORD, min_bits:QWORD
     SAFE_PROLOGUE
-    xor rax, rax
+    sub   rsp, 80h                         ; bigger local to hold up to 64 chars
+
+    ; cache stdout handle
+    call  _io_get_stdout
+    mov   [rsp+08h], rax
+
+    ; snapshot args
+    mov   r11, rcx                         ; r11 = value (u64)
+    mov   r10d, edx                        ; r10d = min_bits (32b is enough)
+
+    ; clamp min_bits to [0..64]
+    cmp   r10d, 64
+    jbe   ib_min_ok
+      mov   r10d, 64
+ib_min_ok:
+
+    ; actual_bits = (r11==0 ? 1 : (bsr(r11)+1))
+    test  r11, r11
+    jnz   ib_have_bits
+      mov   ecx, 1                         ; actual_bits = 1
+      jmp   ib_width
+ib_have_bits:
+    bsr   rax, r11                          ; rax = index of highest set bit [0..63]
+    lea   ecx, [rax+1]                      ; actual_bits = index+1
+
+ib_width:
+    ; required = max(actual_bits, min_bits)
+    mov   eax, r10d
+    cmp   ecx, eax
+    cmovg eax, ecx                          ; EAX = required bits (<=64)
+    mov   esi, eax                          ; save required for later (len)
+
+    ; Build digits from LSB upward, writing backward so output is MSB-first.
+    lea   r9,  [rsp+9Fh]                   ; end of local buffer
+    mov   ecx, esi                          ; remaining = required
+
+ib_loop:
+    test  ecx, ecx
+    jz    ib_finish
+
+    mov   eax, r11d
+    and   eax, 1
+    add   al, '0'                           ; 0->'0', 1->'1'
+    mov   byte ptr [r9], al
+    dec   r9
+
+    shr   r11, 1                            ; next bit
+    dec   ecx
+    jmp   ib_loop
+
+ib_finish:
+    ; start = r9+1, len = ESI
+    lea   rdx, [r9+1]                       ; lpBuffer
+    mov   eax, esi                          ; len (DWORD)
+
+    ; WriteFile(handle, start, len, &written, NULL)
+    mov   rcx, [rsp+08h]                    ; hFile
+    mov   r8d, eax                          ; nBytes
+    lea   r9,  [rsp+18h]                    ; &written
+    mov   qword ptr [rsp+20h], 0            ; lpOverlapped = NULL
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    ib_done_zero
+    mov   eax, dword ptr [rsp+18h]          ; bytes written
+
+ib_done_zero:
+    lea   rsp, [rsp+80h]                    ; release locals (preserve flags)
     RET_OK
 io_print_binary ENDP
+
+
 
 
 io_print_mem PROC buf:QWORD, len:QWORD
