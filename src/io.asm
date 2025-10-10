@@ -228,15 +228,104 @@ io_print_string ENDP
 
 
 
-
-
-
-
+;________________________________________
+; io_print_int(value)
+;________________________________________
+; RCX = value (signed 64-bit)
+; Returns (success):
+;   CF=0, RAX = bytes written
+; Returns (failure):
+;   CF=0, RAX = 0   (best-effort; no ERR_* on write failure)
+; Notes:
+;   - Minimal decimal; 0 prints "0".
+;   - Negative numbers get a leading '-' (handles INT64_MIN).
+;   - Uses WriteFile; works with console or redirected stdout.
+; Stack layout with SAFE_PROLOGUE (sub rsp,28h), then locals (sub rsp,40h):
+;   [rsp+00..+1F]  shadow space
+;   [rsp+08]       cached stdout handle (QWORD)
+;   [rsp+10]       sign flag (BYTE 0/1)
+;   [rsp+18]       DWORD bytesWritten
+;   [rsp+20]       5th arg (lpOverlapped=NULL)
+;   [rsp+30..+5F]  48-byte local digit buffer (we write from the end)
+;________________________________________
 io_print_int PROC value:QWORD
     SAFE_PROLOGUE
-    xor rax, rax
+    sub   rsp, 40h
+
+    ; fetch stdout handle once
+    call  _io_get_stdout
+    mov   [rsp+08h], rax
+
+    ; snapshot value, detect sign, compute magnitude in r11 (u64)
+    mov   r11, rcx                   ; signed input
+    xor   eax, eax
+    mov   byte ptr [rsp+10h], al     ; sign = 0
+    test  r11, r11
+    jge   ipi_mag_ready
+      mov   byte ptr [rsp+10h], 1    ; sign = 1
+      mov   rax, r11
+      neg   rax                      ; |value| (INT64_MIN -> 0x8000..)
+      mov   r11, rax
+ipi_mag_ready:
+
+    ; digit buffer end
+    lea   r10, [rsp+5Fh]
+
+    ; zero special-case: set start=r10 and len=1 directly
+    test  r11, r11
+    jnz   ipi_build
+      mov   byte ptr [r10], '0'
+      mov   r9,  r10                 ; start = r10
+      mov   eax, 1                   ; len   = 1
+      jmp   ipi_write
+
+ipi_build:
+    mov   r8d, 10                    ; r8 = 10
+ipi_loop:
+    xor   rdx, rdx                   ; 128/64 div
+    mov   rax, r11
+    div   r8                          ; RAX = quotient, RDX = remainder (0..9)
+    add   dl, '0'
+    mov   byte ptr [r10], dl
+    dec   r10
+    mov   r11, rax
+    test  r11, r11
+    jnz   ipi_loop
+
+    ; start = r10+1
+    lea   r9,  [r10+1]
+
+    ; prepend '-' if negative: start-- ; *start = '-'
+    cmp   byte ptr [rsp+10h], 0
+    je    ipi_len
+      dec   r9
+      mov   byte ptr [r9], '-'
+
+ipi_len:
+    ; len = (end+1) - start  (64-bit safe)
+    lea   rax, [rsp+60h]
+    sub   rax, r9                    ; RAX = length
+
+ipi_write:
+    ; WriteFile(handle, start, len, &written, NULL)
+    mov   rcx, [rsp+08h]             ; hFile
+    mov   rdx, r9                    ; lpBuffer
+    mov   r8d, eax                   ; nBytes (DWORD)
+    lea   r9,  [rsp+18h]             ; &written
+    mov   qword ptr [rsp+20h], 0     ; lpOverlapped = NULL
+    mov   dword ptr [rsp+18h], 0
+    call  WriteFile
+
+    test  eax, eax
+    jz    ipi_done_zero
+    mov   eax, dword ptr [rsp+18h]   ; bytes written
+
+ipi_done_zero:
+    lea   rsp, [rsp+40h]             ; release locals, preserve flags
     RET_OK
 io_print_int ENDP
+
+
 
 
 ;________________________________________
