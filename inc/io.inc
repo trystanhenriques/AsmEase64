@@ -51,9 +51,10 @@ io_print_binary    PROTO :QWORD, :QWORD                       ; (u64 value, min_
 ; flags reserved for future (e.g., scientific)
 io_print_float     PROTO :QWORD, :QWORD, :QWORD               ; (double value, precision, flags) -> RAX=bytes
 
+;WILL IMPLEMENT LATER
 ; Memory dump (binary-safe): prints len bytes from ptr in a canonical format
 ; Format is TBA; initially may be a simple hex stream or hex+ASCII per line
-io_print_mem       PROTO :QWORD, :QWORD                       ; (ptr, len) -> RAX=bytes
+;io_print_mem       PROTO :QWORD, :QWORD                       ; (ptr, len) -> RAX=bytes
 
 ; Register/value printing helper (format flags TBA; e.g., hex/dec/pfx width)
 io_print_reg       PROTO :QWORD, :QWORD                       ; (u64 value, flags) -> RAX=bytes

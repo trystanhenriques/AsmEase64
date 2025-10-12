@@ -626,15 +626,15 @@ io_print_binary ENDP
 
 
 
-io_print_mem PROC buf:QWORD, len:QWORD
-    SAFE_PROLOGUE
-    test rdx, rdx
-    jz   ipm_ok
-    CHECK_NULL rcx, ERR_NULLPTR        ; rcx == buf
-ipm_ok:
-    xor  rax, rax
-    RET_OK
-io_print_mem ENDP
+;io_print_mem PROC buf:QWORD, len:QWORD
+    ;SAFE_PROLOGUE
+    ;test rdx, rdx
+    ;jz   ipm_ok
+    ;CHECK_NULL rcx, ERR_NULLPTR        ; rcx == buf
+;ipm_ok:
+    ;xor  rax, rax
+    ;RET_OK
+;io_print_mem ENDP
 
 
 io_print_reg PROC value:QWORD, flags:QWORD
