@@ -20,6 +20,44 @@ g_stdin         dq 0
 crlf_bytes      db 13,10        ; "\r\n"
 crlf_len        EQU ($-crlf_bytes)
 
+; bit masks / patterns (avoid huge immediates in instructions)
+mask_abs      dq 07FFFFFFFFFFFFFFFh   ; clear sign
+mask_mant     dq 0000FFFFFFFFFFFFFh   ; mantissa
+pat_inf       dq 07FF000000000000h    ; +INF (abs pattern)
+
+; decimal helpers
+const_half    dq 3FE0000000000000h    ; 0.5 as double
+
+; 10^n as double (n = 0..9)
+pow10_q       dq 3FF0000000000000h    ; 1
+              dq 4024000000000000h    ; 10
+              dq 4059000000000000h    ; 100
+              dq 408F400000000000h    ; 1e3
+              dq 40C3880000000000h    ; 1e4
+              dq 40F86A0000000000h    ; 1e5
+              dq 412E848000000000h    ; 1e6
+              dq 416312D000000000h    ; 1e7
+              dq 4197D78400000000h    ; 1e8
+              dq 41CDCD6500000000h    ; 1e9
+
+; 10^n as uint64 (n = 0..9)
+pow10_u       dq 1,10,100,1000,10000,100000,1000000,10000000,100000000,1000000000
+
+; literals for special cases
+lit_inf       db "inf"
+lit_neginf    db "-inf"
+lit_nan       db "nan"
+
+.const
+inf_str   db 'inf'
+inf_len   EQU ($-inf_str)
+ninf_str  db '-inf'
+ninf_len  EQU ($-ninf_str)
+nan_str   db 'nan'
+nan_len   EQU ($-nan_str)
+
+
+
 ;---------------------------------------------------------
 ; .code
 ;---------------------------------------------------------
@@ -521,11 +559,205 @@ io_print_hex ENDP
 
 
 
+;;________________________________________
+; io_print_float(value, precision, flags)
+; RCX = value (u64 bits of IEEE-754 double)
+; RDX = precision (0..9)
+; R8  = flags (reserved, 0)
+; Returns: CF=0, RAX = bytes written (0 on write failure)
+; Notes:
+;   - Decimal-only, rounds to 'precision' digits.
+;   - Prints "nan", "inf", "-inf" for IEEE-754 specials.
+;   - Uses io_print_string for all output to avoid stack/WriteFile pitfalls.
+;________________________________________
 io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
     SAFE_PROLOGUE
-    xor rax, rax
+    sub   rsp, 0C0h                    ; locals [0..0BF], we will use [30h..AFh] as scratch
+
+    ; snapshot args
+    mov   rbx, rcx                     ; rbx = raw bits (preserve)
+    mov   r10d, edx                    ; precision (32-bit is fine)
+
+    ; clamp precision to [0..9]
+    cmp   r10d, 9
+    jbe   ipf_prec_ok
+    mov   r10d, 9
+ipf_prec_ok:
+
+    ; Setup SSE register with original double
+    movq  xmm0, rcx
+
+    ; NaN? (ucomisd sets PF if NaN)
+    ucomisd xmm0, xmm0
+    jp    ipf_is_nan
+
+    ; Check +/-INF: compare |bits| with 0x7FF0000000000000
+    mov   rax, rcx
+    mov   rdx, 07FFFFFFFFFFFFFFFh
+    and   rax, rdx
+    mov   rdx, 07FF000000000000h
+    cmp   rax, rdx
+    je    ipf_is_inf
+
+    ; -------- Normal numeric path --------
+
+    ; sign handling (avoid printing '-' for -0.0)
+    mov   r11, rbx
+    shr   r11, 63                       ; r11 = sign
+    mov   r15b, 0
+    test  r11, r11
+    jz    ipf_sign_done
+      mov   rax, rbx
+      shl   rax, 1                      ; zero if exp|mant == 0 (i.e., -0.0)
+      jz    ipf_sign_done
+      mov   r15b, 1
+ipf_sign_done:
+
+    ; work with |value|
+    mov   rax, rbx
+    mov   rdx, 07FFFFFFFFFFFFFFFh
+     and   rax, rdx
+    movq  xmm0, rax
+
+    ; integer part
+    cvttsd2si r12, xmm0                 ; r12 = trunc(|x|)
+    cvtsi2sd xmm1, r12
+    subsd   xmm0, xmm1                  ; xmm0 = frac in [0,1)
+
+    ; look up 10^precision (double and u64)
+    lea   rsi, pow10_q
+    lea   rdi, pow10_u
+    mov   eax, r10d
+    movzx rax, ax
+    shl   rax, 3
+    movsd xmm2, qword ptr [rsi+rax]     ; scale (double)
+    mulsd xmm0, xmm2
+    movsd xmm3, qword ptr [const_half]
+    addsd xmm0, xmm3
+    cvttsd2si r13, xmm0                 ; r13 = rounded fractional digits
+
+    mov   eax, r10d
+    movzx rax, ax
+    shl   rax, 3
+    mov   r8,  qword ptr [rdi+rax]      ; r8 = 10^precision (u64)
+
+    ; handle carry: if r13 == 10^precision then frac=0 and int++
+    cmp   r13, r8
+    jne   ipf_no_carry
+      xor   r13, r13
+      add   r12, 1
+ipf_no_carry:
+
+    ; build decimal into [rsp+30h..+0AFh] backward
+    lea   rbx, [rsp+0B0h]               ; end+1
+    lea   r14, [rsp+0AFh]               ; write cursor
+
+    ; fractional part: exactly 'precision' digits
+    test  r10d, r10d
+    jz    ipf_frac_done
+    mov   ecx, r10d
+    mov   rax, r13
+ipf_frac_loop:
+    xor   rdx, rdx
+    mov   r9d, 10
+    div   r9
+    add   dl, '0'
+    mov   byte ptr [r14], dl
+    dec   r14
+    dec   ecx
+    mov   rax, rax
+    jnz   ipf_frac_loop
+
+    ; decimal point
+    mov   byte ptr [r14], '.'
+    dec   r14
+ipf_frac_done:
+
+    ; integer digits (at least one)
+    mov   rax, r12
+    test  rax, rax
+    jnz   ipf_int_loop
+      mov   byte ptr [r14], '0'
+      dec   r14
+      jmp   ipf_after_int
+ipf_int_loop:
+    xor   rdx, rdx
+    mov   r9d, 10
+    div   r9
+    add   dl, '0'
+    mov   byte ptr [r14], dl
+    dec   r14
+    test  rax, rax
+    jnz   ipf_int_loop
+ipf_after_int:
+
+    ; minus sign if needed (and not -0.0)
+    cmp   r15b, 0
+    je    ipf_set_start
+      mov   byte ptr [r14], '-'
+      dec   r14
+
+ipf_set_start:
+    lea   rdx, [r14+1]                  ; start pointer
+    mov   rax, rbx
+    sub   rax, rdx                      ; len = end - start
+
+    ; call io_print_string(start,len)
+    sub   rsp, 20h                      ; shadow space for nested call
+    mov   rcx, rdx                      ; ptr
+    mov   rdx, rax                      ; len
+    call  io_print_string
+    add   rsp, 20h                      ; restore for our locals
+
+    ; return with RAX from io_print_string
+    lea   rsp, [rsp+0C0h]
+    RET_OK
+
+; -------- INF path using io_print_string --------
+ipf_is_inf:
+    ; sign in rbx>>63
+    mov   r11, rbx
+    shr   r11, 63
+    ; Build "-inf" or "inf" in a tiny local and print via io_print_string
+    lea   rdi, [rsp+100h]               ; small scratch zone inside our 0C0h (safe)
+    ; write "inf" backward at [rdi+0..rdi+2]
+    mov   byte ptr [rdi],   'i'
+    mov   byte ptr [rdi+1], 'n'
+    mov   byte ptr [rdi+2], 'f'
+    mov   eax, 3                        ; len=3 by default
+    test  r11, r11
+    jz    ipf_inf_emit
+      ; prepend '-'
+      mov   byte ptr [rdi-1], '-'
+      lea   rcx, [rdi-1]
+      mov   edx, 4
+      jmp   ipf_call_ios
+ipf_inf_emit:
+    mov   rcx, rdi
+    mov   edx, eax
+ipf_call_ios:
+    sub   rsp, 20h
+    call  io_print_string
+    add   rsp, 20h
+    lea   rsp, [rsp+0C0h]
+    RET_OK
+
+; -------- NaN path using io_print_string --------
+ipf_is_nan:
+    lea   rdi, [rsp+100h]
+    mov   byte ptr [rdi],   'n'
+    mov   byte ptr [rdi+1], 'a'
+    mov   byte ptr [rdi+2], 'n'
+    mov   rcx, rdi
+    mov   edx, 3
+    sub   rsp, 20h
+    call  io_print_string
+    add   rsp, 20h
+    lea   rsp, [rsp+0C0h]
     RET_OK
 io_print_float ENDP
+
+
 
 
 ;________________________________________
