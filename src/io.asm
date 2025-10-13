@@ -21,9 +21,9 @@ crlf_bytes      db 13,10        ; "\r\n"
 crlf_len        EQU ($-crlf_bytes)
 
 ; bit masks / patterns (avoid huge immediates in instructions)
-mask_abs      dq 07FFFFFFFFFFFFFFFh   ; clear sign
+mask_abs      dq 7FFFFFFFFFFFFFFFh   ; clear sign
 mask_mant     dq 0000FFFFFFFFFFFFFh   ; mantissa
-pat_inf       dq 07FF000000000000h    ; +INF (abs pattern)
+pat_inf       dq 7FF0000000000000h    ; +INF (abs pattern)
 
 ; decimal helpers
 const_half    dq 3FE0000000000000h    ; 0.5 as double
@@ -48,6 +48,10 @@ lit_inf       db "inf"
 lit_neginf    db "-inf"
 lit_nan       db "nan"
 
+
+;---------------------------------------------------------
+; .const
+;---------------------------------------------------------
 .const
 inf_str   db 'inf'
 inf_len   EQU ($-inf_str)
@@ -55,6 +59,16 @@ ninf_str  db '-inf'
 ninf_len  EQU ($-ninf_str)
 nan_str   db 'nan'
 nan_len   EQU ($-nan_str)
+
+.const
+inf_bytes     db 'i','n','f'
+inf_len       EQU ($-inf_bytes)
+
+neginf_bytes  db '-','i','n','f'
+neginf_len    EQU ($-neginf_bytes)
+
+nan_bytes     db 'n','a','n'
+nan_len       EQU ($-nan_bytes)
 
 
 
@@ -559,24 +573,72 @@ io_print_hex ENDP
 
 
 
-;;________________________________________
-; io_print_float(value, precision, flags)
-; RCX = value (u64 bits of IEEE-754 double)
-; RDX = precision (0..9)
-; R8  = flags (reserved, 0)
-; Returns: CF=0, RAX = bytes written (0 on write failure)
+;===============================================================================
+; io_print_float
+;-------------------------------------------------------------------------------
+; Print an IEEE-754 double as a decimal string.
+;
+; Prototype:
+;   io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
+;
+; Arguments (Win64):
+;   RCX = value
+;         Raw 64-bit IEEE-754 double *bit pattern* (not a pointer).
+;   RDX = precision
+;         Requested number of digits after the decimal point. Clamped to [0..9].
+;   R8  = flags
+;         Reserved (must be 0). Currently ignored.
+;
+; Returns:
+;   CF = 0 on return.
+;   RAX = number of bytes written to stdout (0 if the underlying write fails).
+;
+; Behavior:
+;   • Handles special values first:
+;       - NaN  -> prints "nan"
+;       - +Inf -> prints "inf"
+;       - -Inf -> prints "-inf"
+;   • For normal numbers:
+;       - Prints a minus only if value < 0 and value is not -0.0
+;       - Integer part is trunc(|value|)
+;       - Fraction is rounded to the requested precision using
+;         round(frac * 10^p + 0.5). A carry into the integer part is handled.
+;       - Exactly ‘precision’ fractional digits are emitted (no trimming).
+;   • Uses io_print_string to write the final buffer (no direct WriteFile here).
+;
 ; Notes:
-;   - Decimal-only, rounds to 'precision' digits.
-;   - Prints "nan", "inf", "-inf" for IEEE-754 specials.
-;   - Uses io_print_string for all output to avoid stack/WriteFile pitfalls.
-;________________________________________
+;   • RCX must contain the *bits* of the double. If you have a test constant,
+;     move the 64-bit pattern into RCX (e.g., mov rcx, [dbl_bits]).
+;   • Precision is clamped to 9 to limit table sizes and keep code small.
+;   • -0.0 prints as "0" (no minus sign).
+;   • This routine allocates 0xC0 bytes of local scratch space and builds the
+;     decimal text backward in that buffer, then calls io_print_string(ptr,len).
+;   • io_print_string already reserves its own shadow space; do NOT add any
+;     extra shadow space before calling it.
+;
+; Dependencies:
+;   • io_print_string (writes the final buffer to stdout)
+;   • pow10_q : table of doubles  {1.0, 10.0, 100.0, ...}
+;   • pow10_u : table of u64      {1,   10,   100,   ...}
+;   • const_half : qword 3FE0000000000000h  ; 0.5 as double
+;
+; Clobbers:
+;   GPRs:  RAX, RCX, RDX, R8, R9, R10, R11, R12, R13, R14, R15
+;   XMMs:  XMM0..XMM3
+;   (RBX is preserved by SAFE_PROLOGUE/SAFE_EPILOGUE.)
+;
+; Calling convention / alignment:
+;   • Win64 System Vectors, 16-byte stack alignment preserved by SAFE_PROLOGUE.
+;   • No additional stack adjustment is required around io_print_string.
+;===============================================================================
+
 io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
     SAFE_PROLOGUE
-    sub   rsp, 0C0h                    ; locals [0..0BF], we will use [30h..AFh] as scratch
+    sub   rsp, 0C0h                        ; local scratch [..0BFh]
 
     ; snapshot args
-    mov   rbx, rcx                     ; rbx = raw bits (preserve)
-    mov   r10d, edx                    ; precision (32-bit is fine)
+    mov   rbx, rcx                         ; rbx = raw bits
+    mov   r10d, edx                        ; precision (clamp below)
 
     ; clamp precision to [0..9]
     cmp   r10d, 9
@@ -584,83 +646,127 @@ io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
     mov   r10d, 9
 ipf_prec_ok:
 
-    ; Setup SSE register with original double
+    ; ---------- SPECIALS FIRST ----------
+    ; xmm0 = original double
     movq  xmm0, rcx
 
-    ; NaN? (ucomisd sets PF if NaN)
+    ; NaN? (ucomisd sets PF=1 if NaN)
     ucomisd xmm0, xmm0
-    jp    ipf_is_nan
+    jp    ipf_emit_nan
 
-    ; Check +/-INF: compare |bits| with 0x7FF0000000000000
+    ; |bits| == 0x7FF0000000000000 ?  => INF
     mov   rax, rcx
-    mov   rdx, 07FFFFFFFFFFFFFFFh
+    mov   rdx, 7FFFFFFFFFFFFFFFh         ; ABS mask -> rdx
     and   rax, rdx
-    mov   rdx, 07FF000000000000h
+    mov   rdx, 7FF0000000000000h
     cmp   rax, rdx
-    je    ipf_is_inf
+    jne   ipf_normal                      ; not INF -> go normal
 
-    ; -------- Normal numeric path --------
+    ; sign bit tells +INF vs -INF
+    bt    rbx, 63
+    jc    ipf_emit_neginf
 
-    ; sign handling (avoid printing '-' for -0.0)
+ipf_emit_inf:
+    ; stack literal "inf"
+    lea   rdi, [rsp+100h]
+    mov   byte ptr [rdi+0], 'i'
+    mov   byte ptr [rdi+1], 'n'
+    mov   byte ptr [rdi+2], 'f'
+    mov   rcx, rdi                         ; ptr
+    mov   rdx, 3                           ; len
+    call  io_print_string                  ; no extra shadow space
+    add   rsp, 0C0h
+    RET_OK
+
+ipf_emit_neginf:
+    ; stack literal "-inf"
+    lea   rdi, [rsp+100h]
+    mov   byte ptr [rdi+0], '-'
+    mov   byte ptr [rdi+1], 'i'
+    mov   byte ptr [rdi+2], 'n'
+    mov   byte ptr [rdi+3], 'f'
+    mov   rcx, rdi
+    mov   rdx, 4
+    call  io_print_string
+    add   rsp, 0C0h
+    RET_OK
+
+ipf_emit_nan:
+    ; stack literal "nan"
+    lea   rdi, [rsp+100h]
+    mov   byte ptr [rdi+0], 'n'
+    mov   byte ptr [rdi+1], 'a'
+    mov   byte ptr [rdi+2], 'n'
+    mov   rcx, rdi
+    mov   rdx, 3
+    call  io_print_string
+    add   rsp, 0C0h
+    RET_OK
+
+; ---------- NORMAL NUMERIC PATH ----------
+ipf_normal:
+    ; sign handling (avoid '-' for -0.0)
     mov   r11, rbx
-    shr   r11, 63                       ; r11 = sign
+    shr   r11, 63                          ; r11 = sign
     mov   r15b, 0
     test  r11, r11
     jz    ipf_sign_done
       mov   rax, rbx
-      shl   rax, 1                      ; zero if exp|mant == 0 (i.e., -0.0)
+      shl   rax, 1                         ; zero if exp|mant == 0  (i.e., -0.0)
       jz    ipf_sign_done
       mov   r15b, 1
 ipf_sign_done:
 
-    ; work with |value|
+    ; |value| into xmm0
     mov   rax, rbx
-    mov   rdx, 07FFFFFFFFFFFFFFFh
-     and   rax, rdx
+    mov   rdx, 7FFFFFFFFFFFFFFFh
+    and   rax, rdx
     movq  xmm0, rax
 
-    ; integer part
-    cvttsd2si r12, xmm0                 ; r12 = trunc(|x|)
+    ; integer part = trunc(|value|)
+    cvttsd2si r12, xmm0                    ; r12 = int64 trunc(|x|)
     cvtsi2sd xmm1, r12
-    subsd   xmm0, xmm1                  ; xmm0 = frac in [0,1)
+    subsd   xmm0, xmm1                     ; xmm0 = frac in [0,1)
 
-    ; look up 10^precision (double and u64)
+    ; pow10 tables: doubles (pow10_q) and u64 (pow10_u)
     lea   rsi, pow10_q
     lea   rdi, pow10_u
+
+    ; scale fractional to integer with rounding: round(frac * 10^p)
     mov   eax, r10d
     movzx rax, ax
     shl   rax, 3
-    movsd xmm2, qword ptr [rsi+rax]     ; scale (double)
+    movsd xmm2, qword ptr [rsi+rax]        ; scale (double)
     mulsd xmm0, xmm2
-    movsd xmm3, qword ptr [const_half]
+    movsd xmm3, qword ptr [const_half]     ; +0.5
     addsd xmm0, xmm3
-    cvttsd2si r13, xmm0                 ; r13 = rounded fractional digits
+    cvttsd2si r13, xmm0                    ; r13 = rounded fractional integer
 
+    ; get 10^p (u64) to detect carry
     mov   eax, r10d
     movzx rax, ax
     shl   rax, 3
-    mov   r8,  qword ptr [rdi+rax]      ; r8 = 10^precision (u64)
+    mov   r8,  qword ptr [rdi+rax]         ; r8 = 10^p (u64)
 
-    ; handle carry: if r13 == 10^precision then frac=0 and int++
     cmp   r13, r8
     jne   ipf_no_carry
       xor   r13, r13
       add   r12, 1
 ipf_no_carry:
 
-    ; build decimal into [rsp+30h..+0AFh] backward
-    lea   rbx, [rsp+0B0h]               ; end+1
-    lea   r14, [rsp+0AFh]               ; write cursor
+    ; build decimal in [rsp+30h..+0AFh] backwards
+    lea   rbx, [rsp+0B0h]                  ; end+1
+    lea   r14, [rsp+0AFh]                  ; write cursor
 
-    ; fractional part: exactly 'precision' digits
+    ; fractional digits (exactly 'precision')
     test  r10d, r10d
-    jz    ipf_frac_done
+    jz    ipf_after_frac
     mov   ecx, r10d
     mov   rax, r13
 ipf_frac_loop:
     xor   rdx, rdx
     mov   r9d, 10
-    div   r9
+    div   r9                                ; rax=quot, rdx=rem
     add   dl, '0'
     mov   byte ptr [r14], dl
     dec   r14
@@ -671,7 +777,7 @@ ipf_frac_loop:
     ; decimal point
     mov   byte ptr [r14], '.'
     dec   r14
-ipf_frac_done:
+ipf_after_frac:
 
     ; integer digits (at least one)
     mov   rax, r12
@@ -691,71 +797,25 @@ ipf_int_loop:
     jnz   ipf_int_loop
 ipf_after_int:
 
-    ; minus sign if needed (and not -0.0)
+    ; minus sign if needed (not for -0.0)
     cmp   r15b, 0
     je    ipf_set_start
       mov   byte ptr [r14], '-'
       dec   r14
 
 ipf_set_start:
-    lea   rdx, [r14+1]                  ; start pointer
+    lea   rdx, [r14+1]                     ; start ptr
     mov   rax, rbx
-    sub   rax, rdx                      ; len = end - start
-
+    sub   rax, rdx                         ; len = end - start (rbx = end+1)
     ; call io_print_string(start,len)
-    sub   rsp, 20h                      ; shadow space for nested call
-    mov   rcx, rdx                      ; ptr
-    mov   rdx, rax                      ; len
+    mov   rcx, rdx
+    mov   rdx, rax
     call  io_print_string
-    add   rsp, 20h                      ; restore for our locals
 
-    ; return with RAX from io_print_string
-    lea   rsp, [rsp+0C0h]
-    RET_OK
-
-; -------- INF path using io_print_string --------
-ipf_is_inf:
-    ; sign in rbx>>63
-    mov   r11, rbx
-    shr   r11, 63
-    ; Build "-inf" or "inf" in a tiny local and print via io_print_string
-    lea   rdi, [rsp+100h]               ; small scratch zone inside our 0C0h (safe)
-    ; write "inf" backward at [rdi+0..rdi+2]
-    mov   byte ptr [rdi],   'i'
-    mov   byte ptr [rdi+1], 'n'
-    mov   byte ptr [rdi+2], 'f'
-    mov   eax, 3                        ; len=3 by default
-    test  r11, r11
-    jz    ipf_inf_emit
-      ; prepend '-'
-      mov   byte ptr [rdi-1], '-'
-      lea   rcx, [rdi-1]
-      mov   edx, 4
-      jmp   ipf_call_ios
-ipf_inf_emit:
-    mov   rcx, rdi
-    mov   edx, eax
-ipf_call_ios:
-    sub   rsp, 20h
-    call  io_print_string
-    add   rsp, 20h
-    lea   rsp, [rsp+0C0h]
-    RET_OK
-
-; -------- NaN path using io_print_string --------
-ipf_is_nan:
-    lea   rdi, [rsp+100h]
-    mov   byte ptr [rdi],   'n'
-    mov   byte ptr [rdi+1], 'a'
-    mov   byte ptr [rdi+2], 'n'
-    mov   rcx, rdi
-    mov   edx, 3
-    sub   rsp, 20h
-    call  io_print_string
-    add   rsp, 20h
-    lea   rsp, [rsp+0C0h]
+    add   rsp, 0C0h
     RET_OK
 io_print_float ENDP
+
 
 
 
