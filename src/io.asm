@@ -573,67 +573,31 @@ io_print_hex ENDP
 
 
 
-;===============================================================================
-; io_print_float
-;-------------------------------------------------------------------------------
-; Print an IEEE-754 double as a decimal string.
-;
-; Prototype:
-;   io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
-;
-; Arguments (Win64):
-;   RCX = value
-;         Raw 64-bit IEEE-754 double *bit pattern* (not a pointer).
-;   RDX = precision
-;         Requested number of digits after the decimal point. Clamped to [0..9].
-;   R8  = flags
-;         Reserved (must be 0). Currently ignored.
-;
-; Returns:
-;   CF = 0 on return.
-;   RAX = number of bytes written to stdout (0 if the underlying write fails).
-;
-; Behavior:
-;   • Handles special values first:
-;       - NaN  -> prints "nan"
-;       - +Inf -> prints "inf"
-;       - -Inf -> prints "-inf"
-;   • For normal numbers:
-;       - Prints a minus only if value < 0 and value is not -0.0
-;       - Integer part is trunc(|value|)
-;       - Fraction is rounded to the requested precision using
-;         round(frac * 10^p + 0.5). A carry into the integer part is handled.
-;       - Exactly ‘precision’ fractional digits are emitted (no trimming).
-;   • Uses io_print_string to write the final buffer (no direct WriteFile here).
-;
+;________________________________________
+; io_print_float(value, precision, flags)
+; RCX = value (u64 bits of IEEE-754 double)
+; RDX = precision (0..9)
+; R8  = flags (reserved, 0)
+; Returns: CF=0, RAX = bytes written (0 on write failure)
 ; Notes:
-;   • RCX must contain the *bits* of the double. If you have a test constant,
-;     move the 64-bit pattern into RCX (e.g., mov rcx, [dbl_bits]).
-;   • Precision is clamped to 9 to limit table sizes and keep code small.
-;   • -0.0 prints as "0" (no minus sign).
-;   • This routine allocates 0xC0 bytes of local scratch space and builds the
-;     decimal text backward in that buffer, then calls io_print_string(ptr,len).
-;   • io_print_string already reserves its own shadow space; do NOT add any
-;     extra shadow space before calling it.
-;
-; Dependencies:
-;   • io_print_string (writes the final buffer to stdout)
-;   • pow10_q : table of doubles  {1.0, 10.0, 100.0, ...}
-;   • pow10_u : table of u64      {1,   10,   100,   ...}
-;   • const_half : qword 3FE0000000000000h  ; 0.5 as double
-;
-; Clobbers:
-;   GPRs:  RAX, RCX, RDX, R8, R9, R10, R11, R12, R13, R14, R15
-;   XMMs:  XMM0..XMM3
-;   (RBX is preserved by SAFE_PROLOGUE/SAFE_EPILOGUE.)
-;
-; Calling convention / alignment:
-;   • Win64 System Vectors, 16-byte stack alignment preserved by SAFE_PROLOGUE.
-;   • No additional stack adjustment is required around io_print_string.
-;===============================================================================
-
+;   - Specials first: prints "nan", "inf", "-inf".
+;   - Decimal-only normal path; rounds to 'precision' digits.
+;   - Uses io_print_string for all output.
+;   - Preserves all non-volatile regs it modifies (RBX,RSI,RDI,R12–R15).
+;________________________________________
 io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
     SAFE_PROLOGUE
+
+    ; --- save non-volatile regs we modify (keep pushes even for alignment) ---
+    push rbx
+    push rsi
+    push rdi
+    push rbp        ; padding to keep an even number of pushes (alignment-safe)
+    push r12
+    push r13
+    push r14
+    push r15
+
     sub   rsp, 0C0h                        ; local scratch [..0BFh]
 
     ; snapshot args
@@ -656,7 +620,7 @@ ipf_prec_ok:
 
     ; |bits| == 0x7FF0000000000000 ?  => INF
     mov   rax, rcx
-    mov   rdx, 7FFFFFFFFFFFFFFFh         ; ABS mask -> rdx
+    mov   rdx, 7FFFFFFFFFFFFFFFh          ; ABS mask -> rdx
     and   rax, rdx
     mov   rdx, 7FF0000000000000h
     cmp   rax, rdx
@@ -674,9 +638,8 @@ ipf_emit_inf:
     mov   byte ptr [rdi+2], 'f'
     mov   rcx, rdi                         ; ptr
     mov   rdx, 3                           ; len
-    call  io_print_string                  ; no extra shadow space
-    add   rsp, 0C0h
-    RET_OK
+    call  io_print_string
+    jmp   ipf_epilogue
 
 ipf_emit_neginf:
     ; stack literal "-inf"
@@ -688,8 +651,7 @@ ipf_emit_neginf:
     mov   rcx, rdi
     mov   rdx, 4
     call  io_print_string
-    add   rsp, 0C0h
-    RET_OK
+    jmp   ipf_epilogue
 
 ipf_emit_nan:
     ; stack literal "nan"
@@ -700,8 +662,7 @@ ipf_emit_nan:
     mov   rcx, rdi
     mov   rdx, 3
     call  io_print_string
-    add   rsp, 0C0h
-    RET_OK
+    jmp   ipf_epilogue
 
 ; ---------- NORMAL NUMERIC PATH ----------
 ipf_normal:
@@ -812,9 +773,20 @@ ipf_set_start:
     mov   rdx, rax
     call  io_print_string
 
+    ; unified epilogue/restore for all exit paths
+ipf_epilogue:
     add   rsp, 0C0h
+    pop   r15
+    pop   r14
+    pop   r13
+    pop   r12
+    pop   rbp
+    pop   rdi
+    pop   rsi
+    pop   rbx
     RET_OK
 io_print_float ENDP
+
 
 
 
