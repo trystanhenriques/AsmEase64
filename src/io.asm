@@ -947,53 +947,11 @@ io_print_newline ENDP
 ;=========================================================
 
 
-;________________________________________
-; io_read_char()
-; Read exactly one byte from STDIN (no decoding).
-; Returns:
-;   CF=0, RAX=1, AL = byte read
-;   CF=1, RAX=0 on EOF or error
-;________________________________________
-io_read_char PROC
+io_read_char PROC out_ptr:QWORD
     SAFE_PROLOGUE
-
-    ; Get STDIN handle -> RAX
-    call    _io_get_stdin
-
-    ; Reserve shadow + locals for ReadFile
-    ; Layout:
-    ;   [rsp+20] qword lpOverlapped (NULL)
-    ;   [rsp+28] dword bytesRead
-    ;   [rsp+40] 1-byte buffer
-    sub     rsp, 60h
-
-    mov     rcx, rax                ; hFile
-    lea     rdx, [rsp+40h]          ; lpBuffer
-    mov     r8d, 1                  ; to read
-    lea     r9,  [rsp+28h]          ; &bytesRead
-    mov     qword ptr [rsp+20h], 0  ; lpOverlapped = NULL
-    mov     dword ptr [rsp+28h], 0  ; init
-
-    call    ReadFile
-
-    mov     eax, dword ptr [rsp+28h]
-    cmp     eax, 1
-    jne     irc_fail
-
-    ; success: capture byte into AL before popping frame
-    mov     al, byte ptr [rsp+40h]
-    ; normalize RAX to 1 exactly
-    mov     eax, 1
-
-    add     rsp, 60h
-    ; CF=0 on success
+    CHECK_NULL rcx, ERR_NULLPTR
+    xor rax, rax
     RET_OK
-
-irc_fail:
-    add     rsp, 60h
-    stc
-    xor     rax, rax
-    ret
 io_read_char ENDP
 
 
