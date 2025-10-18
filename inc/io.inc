@@ -34,8 +34,9 @@ io_init            PROTO
 ; Simple character (low 8 bits used)
 io_print_char      PROTO :QWORD                               ; (ch) -> RAX=1
 
-; Raw string (binary-safe): writes exactly 'len' bytes from ptr
-io_print_string    PROTO :QWORD, :QWORD                       ; (ptr, len) -> RAX=bytes written
+; Prints a NUL-terminated string. Returns CF=0 on success, RAX=bytes written.
+; On NULL pointer: CF=1, RAX=ERR_NULLPTR.
+io_print_string      PROTO :QWORD
 
 ; Signed/unsigned 64-bit integers in decimal
 io_print_int       PROTO :QWORD                               ; (s64 value) -> RAX=bytes written
