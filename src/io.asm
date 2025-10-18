@@ -187,96 +187,77 @@ io_print_char ENDP
 
 
 ;________________________________________
-; io_print_string(buf, len)
-;________________________________________
-; RCX = buf (pointer to bytes)
-; RDX = len (number of bytes to write)
-; Returns (success):
-;   CF=0, RAX = bytes written (may be 0 if len==0)
-; Returns (error):
-;   CF=1, EAX = ERR_NULLPTR   if len>0 and buf == NULL
+; io_print_string(strz)
+; RCX = pointer to NUL-terminated string
+; Returns:
+;   CF=0, RAX = bytes written
+;   CF=1, RAX = ERR_NULLPTR if RCX == NULL
 ; Notes:
-;   - Binary-safe: writes exactly 'len' bytes (no terminator).
-;   - Uses WriteFile so it works with console or redirected stdout.
-;   - Fast path for len <= 0xFFFFFFFF (single WriteFile), slow path otherwise.
+;   - Uses WriteFile directly.
+;   - IMPORTANT (Win64 ABI):
+;       * Reserve 32 bytes of shadow space before call.
+;       * Place 5th arg (lpOverlapped) ABOVE the shadow space.
+;       * Keep lpNumberOfBytesWritten pointer INSIDE the shadow space.
 ;________________________________________
-io_print_string PROC buf:QWORD, len:QWORD
+io_print_string PROC strz:QWORD
     SAFE_PROLOGUE
 
-    ; snapshot args immediately (param symbols are invalid after prologue)
-    mov   r10, rcx                 ; r10 = buf
-    mov   r11, rdx                 ; r11 = len
+    ; NULL? -> ERR_NULLPTR, CF=1
+    test    rcx, rcx
+    jnz     ips_not_null
+      mov     eax, ERR_NULLPTR
+      stc
+      SAFE_EPILOGUE
+ips_not_null:
 
-    ; len == 0 -> success, 0 bytes
-    test  r11, r11
-    jnz   ips_nonzero
-    xor   eax, eax
-    RET_OK
+    ; Save string pointer
+    mov     r10, rcx                 ; save original string pointer
 
-ips_nonzero:
-    ; if we need to write, buf must be non-NULL
-    CHECK_NULL r10, ERR_NULLPTR
+    ; Compute length = strlen(strz)
+    xor     r9d, r9d                 ; r9d = length counter
+ips_len_loop:
+    mov     al, byte ptr [rcx]
+    test    al, al
+    jz      ips_len_done
+    inc     r9d
+    inc     rcx
+    jmp     ips_len_loop
+ips_len_done:
 
-    ; fetch stdout handle, stash in our shadow space
-    call  _io_get_stdout           ; RAX = handle
-    mov   [rsp+08h], rax           ; save handle (8 bytes inside shadow)
+    ; Empty string -> CF=0, RAX=0
+    test    r9d, r9d
+    jnz     ips_do_write
+      xor     eax, eax
+      clc
+      SAFE_EPILOGUE
 
-    ; ---- fast path: one call if len <= 0xFFFFFFFF ----
-    mov   rax, 0FFFFFFFFh
-    cmp   r11, rax
-    ja    ips_slow_path
+ips_do_write:
+    ; Get (and cache) stdout handle
+    call    _io_get_stdout           ; RAX = handle
 
-    mov   rcx, [rsp+08h]           ; hFile
-    mov   rdx, r10                 ; lpBuffer
-    mov   r8d, r11d                ; nBytes (DWORD)
-    lea   r9,  [rsp+18h]           ; &written (DWORD in shadow)
-    mov   qword ptr [rsp+20h], 0   ; lpOverlapped = NULL
-    mov   dword ptr [rsp+18h], 0
-    call  WriteFile
+    ; Prepare WriteFile(handle, buf, len, &written, NULL)
+    sub     rsp, 28h                 ; 32 shadow + 8 for 5th arg
+    mov     rcx, rax                 ; hFile = cached stdout
+    mov     rdx, r10                 ; buffer = original string pointer
+    mov     r8d, r9d                 ; nNumberOfBytesToWrite = computed length
+    lea     r9,  [rsp+10h]          ; &written (inside shadow)
+    mov     dword ptr [rsp+10h], 0   ; init written
+    mov     qword ptr [rsp+20h], 0   ; lpOverlapped = NULL (5th arg slot)
 
-    test  eax, eax
-    jz    ips_fast_zero
-    mov   eax, dword ptr [rsp+18h] ; bytes written
-    RET_OK
-ips_fast_zero:
-    xor   eax, eax
-    RET_OK
+    call    WriteFile
 
-    ; ---- slow path: chunking for >4GiB ----
-ips_slow_path:
-    xor   rax, rax                 ; total = 0
-ips_loop:
-    test  r11, r11
-    jz    ips_done
+    ; Return bytes written in RAX
+    mov     eax, dword ptr [rsp+10h]
+    add     rsp, 28h
+    clc                              ; success
 
-    ; chunk = min(remaining=r11, 0xFFFFFFFF)
-    mov   ecx, 0FFFFFFFFh          ; ECX = max DWORD
-    cmp   r11, rcx
-    cmovbe rcx, r11                ; ECX = (r11 <= max) ? r11 : max
-
-    mov   rcx, [rsp+08h]           ; hFile
-    mov   rdx, r10                 ; lpBuffer
-    mov   r8d, ecx                 ; nBytes (DWORD)
-    lea   r9,  [rsp+18h]           ; &written
-    mov   qword ptr [rsp+20h], 0
-    mov   dword ptr [rsp+18h], 0
-    call  WriteFile
-
-    test  eax, eax
-    jz    ips_done                 ; treat failure as short write
-
-    mov   edx, dword ptr [rsp+18h] ; written (zero-extends to RDX)
-    test  edx, edx
-    jz    ips_done
-
-    add   rax, rdx                 ; total += written
-    add   r10, rdx                 ; buf   += written
-    sub   r11, rdx                 ; remaining -= written
-    jmp   ips_loop
-
-ips_done:
-    RET_OK
+    SAFE_EPILOGUE
 io_print_string ENDP
+
+
+
+
+
 
 
 
