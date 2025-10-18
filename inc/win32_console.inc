@@ -13,7 +13,7 @@ EXTERN WriteConsoleA:PROC
 EXTERN ReadConsoleA:PROC
 EXTERN WriteFile:PROC
 EXTERN GetStdHandle:PROC
-
+EXTERN ReadFile:PROC
 EXTERN ExitProcess:PROC
 
 ; Make sure kernel32 gets linked by consumers that include this
