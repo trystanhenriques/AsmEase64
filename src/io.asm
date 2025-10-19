@@ -52,6 +52,8 @@ lit_nan       db "nan"
 ;---------------------------------------------------------
 ; .const
 ;---------------------------------------------------------
+
+
 .const
 inf_str   db 'inf'
 inf_len   EQU ($-inf_str)
@@ -69,6 +71,12 @@ neginf_len    EQU ($-neginf_bytes)
 
 nan_bytes     db 'n','a','n'
 nan_len       EQU ($-nan_bytes)
+
+; NUL-terminated literals for specials
+inf_cstr    db "inf",0
+ninf_cstr   db "-inf",0
+nan_cstr    db "nan",0
+
 
 
 
@@ -563,7 +571,7 @@ io_print_hex ENDP
 ; Notes:
 ;   - Specials first: prints "nan", "inf", "-inf".
 ;   - Decimal-only normal path; rounds to 'precision' digits.
-;   - Uses io_print_string for all output.
+;   - Uses io_print_string (C-string version, RCX only).
 ;   - Preserves all non-volatile regs it modifies (RBX,RSI,RDI,R12–R15).
 ;________________________________________
 io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
@@ -573,7 +581,7 @@ io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
     push rbx
     push rsi
     push rdi
-    push rbp        ; padding to keep an even number of pushes (alignment-safe)
+    push rbp
     push r12
     push r13
     push r14
@@ -592,8 +600,7 @@ io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
 ipf_prec_ok:
 
     ; ---------- SPECIALS FIRST ----------
-    ; xmm0 = original double
-    movq  xmm0, rcx
+    movq  xmm0, rcx                         ; xmm0 = original double
 
     ; NaN? (ucomisd sets PF=1 if NaN)
     ucomisd xmm0, xmm0
@@ -601,47 +608,28 @@ ipf_prec_ok:
 
     ; |bits| == 0x7FF0000000000000 ?  => INF
     mov   rax, rcx
-    mov   rdx, 7FFFFFFFFFFFFFFFh          ; ABS mask -> rdx
+    mov   rdx, [mask_abs]      ; 7FFFFFFFFFFFFFFFh
     and   rax, rdx
-    mov   rdx, 7FF0000000000000h
+    mov   rdx, [pat_inf]       ; 7FF0000000000000h
     cmp   rax, rdx
-    jne   ipf_normal                      ; not INF -> go normal
+    jne   ipf_normal                        ; not INF -> go normal
 
     ; sign bit tells +INF vs -INF
     bt    rbx, 63
     jc    ipf_emit_neginf
 
 ipf_emit_inf:
-    ; stack literal "inf"
-    lea   rdi, [rsp+100h]
-    mov   byte ptr [rdi+0], 'i'
-    mov   byte ptr [rdi+1], 'n'
-    mov   byte ptr [rdi+2], 'f'
-    mov   rcx, rdi                         ; ptr
-    mov   rdx, 3                           ; len
+    lea   rcx, inf_cstr                     ; "inf\0"
     call  io_print_string
     jmp   ipf_epilogue
 
 ipf_emit_neginf:
-    ; stack literal "-inf"
-    lea   rdi, [rsp+100h]
-    mov   byte ptr [rdi+0], '-'
-    mov   byte ptr [rdi+1], 'i'
-    mov   byte ptr [rdi+2], 'n'
-    mov   byte ptr [rdi+3], 'f'
-    mov   rcx, rdi
-    mov   rdx, 4
+    lea   rcx, ninf_cstr                    ; "-inf\0"
     call  io_print_string
     jmp   ipf_epilogue
 
 ipf_emit_nan:
-    ; stack literal "nan"
-    lea   rdi, [rsp+100h]
-    mov   byte ptr [rdi+0], 'n'
-    mov   byte ptr [rdi+1], 'a'
-    mov   byte ptr [rdi+2], 'n'
-    mov   rcx, rdi
-    mov   rdx, 3
+    lea   rcx, nan_cstr                     ; "nan\0"
     call  io_print_string
     jmp   ipf_epilogue
 
@@ -649,12 +637,12 @@ ipf_emit_nan:
 ipf_normal:
     ; sign handling (avoid '-' for -0.0)
     mov   r11, rbx
-    shr   r11, 63                          ; r11 = sign
+    shr   r11, 63                           ; r11 = sign
     mov   r15b, 0
     test  r11, r11
     jz    ipf_sign_done
       mov   rax, rbx
-      shl   rax, 1                         ; zero if exp|mant == 0  (i.e., -0.0)
+      shl   rax, 1                          ; zero if exp|mant == 0  (i.e., -0.0)
       jz    ipf_sign_done
       mov   r15b, 1
 ipf_sign_done:
@@ -666,9 +654,9 @@ ipf_sign_done:
     movq  xmm0, rax
 
     ; integer part = trunc(|value|)
-    cvttsd2si r12, xmm0                    ; r12 = int64 trunc(|x|)
+    cvttsd2si r12, xmm0                     ; r12 = int64 trunc(|x|)
     cvtsi2sd xmm1, r12
-    subsd   xmm0, xmm1                     ; xmm0 = frac in [0,1)
+    subsd   xmm0, xmm1                      ; xmm0 = frac in [0,1)
 
     ; pow10 tables: doubles (pow10_q) and u64 (pow10_u)
     lea   rsi, pow10_q
@@ -678,17 +666,17 @@ ipf_sign_done:
     mov   eax, r10d
     movzx rax, ax
     shl   rax, 3
-    movsd xmm2, qword ptr [rsi+rax]        ; scale (double)
+    movsd xmm2, qword ptr [rsi+rax]         ; scale (double)
     mulsd xmm0, xmm2
-    movsd xmm3, qword ptr [const_half]     ; +0.5
+    movsd xmm3, qword ptr [const_half]      ; +0.5
     addsd xmm0, xmm3
-    cvttsd2si r13, xmm0                    ; r13 = rounded fractional integer
+    cvttsd2si r13, xmm0                     ; r13 = rounded fractional integer
 
     ; get 10^p (u64) to detect carry
     mov   eax, r10d
     movzx rax, ax
     shl   rax, 3
-    mov   r8,  qword ptr [rdi+rax]         ; r8 = 10^p (u64)
+    mov   r8,  qword ptr [rdi+rax]          ; r8 = 10^p (u64)
 
     cmp   r13, r8
     jne   ipf_no_carry
@@ -697,8 +685,8 @@ ipf_sign_done:
 ipf_no_carry:
 
     ; build decimal in [rsp+30h..+0AFh] backwards
-    lea   rbx, [rsp+0B0h]                  ; end+1
-    lea   r14, [rsp+0AFh]                  ; write cursor
+    lea   rbx, [rsp+0B0h]                   ; end+1
+    lea   r14, [rsp+0AFh]                   ; write cursor
 
     ; fractional digits (exactly 'precision')
     test  r10d, r10d
@@ -708,7 +696,7 @@ ipf_no_carry:
 ipf_frac_loop:
     xor   rdx, rdx
     mov   r9d, 10
-    div   r9                                ; rax=quot, rdx=rem
+    div   r9                                 ; rax=quot, rdx=rem
     add   dl, '0'
     mov   byte ptr [r14], dl
     dec   r14
@@ -746,12 +734,8 @@ ipf_after_int:
       dec   r14
 
 ipf_set_start:
-    lea   rdx, [r14+1]                     ; start ptr
-    mov   rax, rbx
-    sub   rax, rdx                         ; len = end - start (rbx = end+1)
-    ; call io_print_string(start,len)
-    mov   rcx, rdx
-    mov   rdx, rax
+    lea   rcx, [r14+1]                      ; RCX = start ptr
+    mov   byte ptr [rbx], 0                 ; NUL-terminate at end+1
     call  io_print_string
 
     ; unified epilogue/restore for all exit paths
@@ -767,6 +751,7 @@ ipf_epilogue:
     pop   rbx
     RET_OK
 io_print_float ENDP
+
 
 
 
