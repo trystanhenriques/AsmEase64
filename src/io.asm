@@ -52,6 +52,8 @@ lit_nan       db "nan"
 ;---------------------------------------------------------
 ; .const
 ;---------------------------------------------------------
+
+
 .const
 inf_str   db 'inf'
 inf_len   EQU ($-inf_str)
@@ -69,6 +71,12 @@ neginf_len    EQU ($-neginf_bytes)
 
 nan_bytes     db 'n','a','n'
 nan_len       EQU ($-nan_bytes)
+
+; NUL-terminated literals for specials
+inf_cstr    db "inf",0
+ninf_cstr   db "-inf",0
+nan_cstr    db "nan",0
+
 
 
 
@@ -187,96 +195,77 @@ io_print_char ENDP
 
 
 ;________________________________________
-; io_print_string(buf, len)
-;________________________________________
-; RCX = buf (pointer to bytes)
-; RDX = len (number of bytes to write)
-; Returns (success):
-;   CF=0, RAX = bytes written (may be 0 if len==0)
-; Returns (error):
-;   CF=1, EAX = ERR_NULLPTR   if len>0 and buf == NULL
+; io_print_string(strz)
+; RCX = pointer to NUL-terminated string
+; Returns:
+;   CF=0, RAX = bytes written
+;   CF=1, RAX = ERR_NULLPTR if RCX == NULL
 ; Notes:
-;   - Binary-safe: writes exactly 'len' bytes (no terminator).
-;   - Uses WriteFile so it works with console or redirected stdout.
-;   - Fast path for len <= 0xFFFFFFFF (single WriteFile), slow path otherwise.
+;   - Uses WriteFile directly.
+;   - IMPORTANT (Win64 ABI):
+;       * Reserve 32 bytes of shadow space before call.
+;       * Place 5th arg (lpOverlapped) ABOVE the shadow space.
+;       * Keep lpNumberOfBytesWritten pointer INSIDE the shadow space.
 ;________________________________________
-io_print_string PROC buf:QWORD, len:QWORD
+io_print_string PROC strz:QWORD
     SAFE_PROLOGUE
 
-    ; snapshot args immediately (param symbols are invalid after prologue)
-    mov   r10, rcx                 ; r10 = buf
-    mov   r11, rdx                 ; r11 = len
+    ; NULL? -> ERR_NULLPTR, CF=1
+    test    rcx, rcx
+    jnz     ips_not_null
+      mov     eax, ERR_NULLPTR
+      stc
+      SAFE_EPILOGUE
+ips_not_null:
 
-    ; len == 0 -> success, 0 bytes
-    test  r11, r11
-    jnz   ips_nonzero
-    xor   eax, eax
-    RET_OK
+    ; Save string pointer
+    mov     r10, rcx                 ; save original string pointer
 
-ips_nonzero:
-    ; if we need to write, buf must be non-NULL
-    CHECK_NULL r10, ERR_NULLPTR
+    ; Compute length = strlen(strz)
+    xor     r9d, r9d                 ; r9d = length counter
+ips_len_loop:
+    mov     al, byte ptr [rcx]
+    test    al, al
+    jz      ips_len_done
+    inc     r9d
+    inc     rcx
+    jmp     ips_len_loop
+ips_len_done:
 
-    ; fetch stdout handle, stash in our shadow space
-    call  _io_get_stdout           ; RAX = handle
-    mov   [rsp+08h], rax           ; save handle (8 bytes inside shadow)
+    ; Empty string -> CF=0, RAX=0
+    test    r9d, r9d
+    jnz     ips_do_write
+      xor     eax, eax
+      clc
+      SAFE_EPILOGUE
 
-    ; ---- fast path: one call if len <= 0xFFFFFFFF ----
-    mov   rax, 0FFFFFFFFh
-    cmp   r11, rax
-    ja    ips_slow_path
+ips_do_write:
+    ; Get (and cache) stdout handle
+    call    _io_get_stdout           ; RAX = handle
 
-    mov   rcx, [rsp+08h]           ; hFile
-    mov   rdx, r10                 ; lpBuffer
-    mov   r8d, r11d                ; nBytes (DWORD)
-    lea   r9,  [rsp+18h]           ; &written (DWORD in shadow)
-    mov   qword ptr [rsp+20h], 0   ; lpOverlapped = NULL
-    mov   dword ptr [rsp+18h], 0
-    call  WriteFile
+    ; Prepare WriteFile(handle, buf, len, &written, NULL)
+    sub     rsp, 28h                 ; 32 shadow + 8 for 5th arg
+    mov     rcx, rax                 ; hFile = cached stdout
+    mov     rdx, r10                 ; buffer = original string pointer
+    mov     r8d, r9d                 ; nNumberOfBytesToWrite = computed length
+    lea     r9,  [rsp+10h]          ; &written (inside shadow)
+    mov     dword ptr [rsp+10h], 0   ; init written
+    mov     qword ptr [rsp+20h], 0   ; lpOverlapped = NULL (5th arg slot)
 
-    test  eax, eax
-    jz    ips_fast_zero
-    mov   eax, dword ptr [rsp+18h] ; bytes written
-    RET_OK
-ips_fast_zero:
-    xor   eax, eax
-    RET_OK
+    call    WriteFile
 
-    ; ---- slow path: chunking for >4GiB ----
-ips_slow_path:
-    xor   rax, rax                 ; total = 0
-ips_loop:
-    test  r11, r11
-    jz    ips_done
+    ; Return bytes written in RAX
+    mov     eax, dword ptr [rsp+10h]
+    add     rsp, 28h
+    clc                              ; success
 
-    ; chunk = min(remaining=r11, 0xFFFFFFFF)
-    mov   ecx, 0FFFFFFFFh          ; ECX = max DWORD
-    cmp   r11, rcx
-    cmovbe rcx, r11                ; ECX = (r11 <= max) ? r11 : max
-
-    mov   rcx, [rsp+08h]           ; hFile
-    mov   rdx, r10                 ; lpBuffer
-    mov   r8d, ecx                 ; nBytes (DWORD)
-    lea   r9,  [rsp+18h]           ; &written
-    mov   qword ptr [rsp+20h], 0
-    mov   dword ptr [rsp+18h], 0
-    call  WriteFile
-
-    test  eax, eax
-    jz    ips_done                 ; treat failure as short write
-
-    mov   edx, dword ptr [rsp+18h] ; written (zero-extends to RDX)
-    test  edx, edx
-    jz    ips_done
-
-    add   rax, rdx                 ; total += written
-    add   r10, rdx                 ; buf   += written
-    sub   r11, rdx                 ; remaining -= written
-    jmp   ips_loop
-
-ips_done:
-    RET_OK
+    SAFE_EPILOGUE
 io_print_string ENDP
+
+
+
+
+
 
 
 
@@ -582,7 +571,7 @@ io_print_hex ENDP
 ; Notes:
 ;   - Specials first: prints "nan", "inf", "-inf".
 ;   - Decimal-only normal path; rounds to 'precision' digits.
-;   - Uses io_print_string for all output.
+;   - Uses io_print_string (C-string version, RCX only).
 ;   - Preserves all non-volatile regs it modifies (RBX,RSI,RDI,R12–R15).
 ;________________________________________
 io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
@@ -592,7 +581,7 @@ io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
     push rbx
     push rsi
     push rdi
-    push rbp        ; padding to keep an even number of pushes (alignment-safe)
+    push rbp
     push r12
     push r13
     push r14
@@ -611,8 +600,7 @@ io_print_float PROC value:QWORD, precision:QWORD, flags:QWORD
 ipf_prec_ok:
 
     ; ---------- SPECIALS FIRST ----------
-    ; xmm0 = original double
-    movq  xmm0, rcx
+    movq  xmm0, rcx                         ; xmm0 = original double
 
     ; NaN? (ucomisd sets PF=1 if NaN)
     ucomisd xmm0, xmm0
@@ -620,47 +608,28 @@ ipf_prec_ok:
 
     ; |bits| == 0x7FF0000000000000 ?  => INF
     mov   rax, rcx
-    mov   rdx, 7FFFFFFFFFFFFFFFh          ; ABS mask -> rdx
+    mov   rdx, [mask_abs]      ; 7FFFFFFFFFFFFFFFh
     and   rax, rdx
-    mov   rdx, 7FF0000000000000h
+    mov   rdx, [pat_inf]       ; 7FF0000000000000h
     cmp   rax, rdx
-    jne   ipf_normal                      ; not INF -> go normal
+    jne   ipf_normal                        ; not INF -> go normal
 
     ; sign bit tells +INF vs -INF
     bt    rbx, 63
     jc    ipf_emit_neginf
 
 ipf_emit_inf:
-    ; stack literal "inf"
-    lea   rdi, [rsp+100h]
-    mov   byte ptr [rdi+0], 'i'
-    mov   byte ptr [rdi+1], 'n'
-    mov   byte ptr [rdi+2], 'f'
-    mov   rcx, rdi                         ; ptr
-    mov   rdx, 3                           ; len
+    lea   rcx, inf_cstr                     ; "inf\0"
     call  io_print_string
     jmp   ipf_epilogue
 
 ipf_emit_neginf:
-    ; stack literal "-inf"
-    lea   rdi, [rsp+100h]
-    mov   byte ptr [rdi+0], '-'
-    mov   byte ptr [rdi+1], 'i'
-    mov   byte ptr [rdi+2], 'n'
-    mov   byte ptr [rdi+3], 'f'
-    mov   rcx, rdi
-    mov   rdx, 4
+    lea   rcx, ninf_cstr                    ; "-inf\0"
     call  io_print_string
     jmp   ipf_epilogue
 
 ipf_emit_nan:
-    ; stack literal "nan"
-    lea   rdi, [rsp+100h]
-    mov   byte ptr [rdi+0], 'n'
-    mov   byte ptr [rdi+1], 'a'
-    mov   byte ptr [rdi+2], 'n'
-    mov   rcx, rdi
-    mov   rdx, 3
+    lea   rcx, nan_cstr                     ; "nan\0"
     call  io_print_string
     jmp   ipf_epilogue
 
@@ -668,12 +637,12 @@ ipf_emit_nan:
 ipf_normal:
     ; sign handling (avoid '-' for -0.0)
     mov   r11, rbx
-    shr   r11, 63                          ; r11 = sign
+    shr   r11, 63                           ; r11 = sign
     mov   r15b, 0
     test  r11, r11
     jz    ipf_sign_done
       mov   rax, rbx
-      shl   rax, 1                         ; zero if exp|mant == 0  (i.e., -0.0)
+      shl   rax, 1                          ; zero if exp|mant == 0  (i.e., -0.0)
       jz    ipf_sign_done
       mov   r15b, 1
 ipf_sign_done:
@@ -685,9 +654,9 @@ ipf_sign_done:
     movq  xmm0, rax
 
     ; integer part = trunc(|value|)
-    cvttsd2si r12, xmm0                    ; r12 = int64 trunc(|x|)
+    cvttsd2si r12, xmm0                     ; r12 = int64 trunc(|x|)
     cvtsi2sd xmm1, r12
-    subsd   xmm0, xmm1                     ; xmm0 = frac in [0,1)
+    subsd   xmm0, xmm1                      ; xmm0 = frac in [0,1)
 
     ; pow10 tables: doubles (pow10_q) and u64 (pow10_u)
     lea   rsi, pow10_q
@@ -697,17 +666,17 @@ ipf_sign_done:
     mov   eax, r10d
     movzx rax, ax
     shl   rax, 3
-    movsd xmm2, qword ptr [rsi+rax]        ; scale (double)
+    movsd xmm2, qword ptr [rsi+rax]         ; scale (double)
     mulsd xmm0, xmm2
-    movsd xmm3, qword ptr [const_half]     ; +0.5
+    movsd xmm3, qword ptr [const_half]      ; +0.5
     addsd xmm0, xmm3
-    cvttsd2si r13, xmm0                    ; r13 = rounded fractional integer
+    cvttsd2si r13, xmm0                     ; r13 = rounded fractional integer
 
     ; get 10^p (u64) to detect carry
     mov   eax, r10d
     movzx rax, ax
     shl   rax, 3
-    mov   r8,  qword ptr [rdi+rax]         ; r8 = 10^p (u64)
+    mov   r8,  qword ptr [rdi+rax]          ; r8 = 10^p (u64)
 
     cmp   r13, r8
     jne   ipf_no_carry
@@ -716,8 +685,8 @@ ipf_sign_done:
 ipf_no_carry:
 
     ; build decimal in [rsp+30h..+0AFh] backwards
-    lea   rbx, [rsp+0B0h]                  ; end+1
-    lea   r14, [rsp+0AFh]                  ; write cursor
+    lea   rbx, [rsp+0B0h]                   ; end+1
+    lea   r14, [rsp+0AFh]                   ; write cursor
 
     ; fractional digits (exactly 'precision')
     test  r10d, r10d
@@ -727,7 +696,7 @@ ipf_no_carry:
 ipf_frac_loop:
     xor   rdx, rdx
     mov   r9d, 10
-    div   r9                                ; rax=quot, rdx=rem
+    div   r9                                 ; rax=quot, rdx=rem
     add   dl, '0'
     mov   byte ptr [r14], dl
     dec   r14
@@ -765,12 +734,8 @@ ipf_after_int:
       dec   r14
 
 ipf_set_start:
-    lea   rdx, [r14+1]                     ; start ptr
-    mov   rax, rbx
-    sub   rax, rdx                         ; len = end - start (rbx = end+1)
-    ; call io_print_string(start,len)
-    mov   rcx, rdx
-    mov   rdx, rax
+    lea   rcx, [r14+1]                      ; RCX = start ptr
+    mov   byte ptr [rbx], 0                 ; NUL-terminate at end+1
     call  io_print_string
 
     ; unified epilogue/restore for all exit paths
@@ -786,6 +751,7 @@ ipf_epilogue:
     pop   rbx
     RET_OK
 io_print_float ENDP
+
 
 
 
