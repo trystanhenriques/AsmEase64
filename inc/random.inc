@@ -1,0 +1,8 @@
+IFNDEF RANDOM_INC_GUARD ; header guard
+RANDOM_INC_GUARD EQU 1
+
+INCLUDE macros.inc
+INCLUDE errors.inc
+
+
+ENDIF

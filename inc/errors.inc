@@ -18,5 +18,8 @@ ARR_ERR_OUTOFRANGE    EQU 2    ; index/offset was out of bounds (not in [0, len)
 ARR_ERR_LEN_ZERO      EQU 3    ; length was zero where a non-empty array is required.
 ARR_ERR_CAPACITY      EQU 4    ; insufficient capacity for the operation (ex. insert/append/shift).
 
+; Random Errors
+ERR_BADARG		  EQU 3	 ; bad argument (e.g., rand_range: max == 0)
+
 
 ENDIF ; ERRORS_INC_GUARD

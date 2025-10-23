@@ -15,7 +15,7 @@ INCLUDE errors.inc
 INCLUDE array.inc
 INCLUDE string.inc
 INCLUDE io.inc
-
+INCLUDE random.inc
 
 ; header guard end
 ENDIF
