@@ -30,6 +30,11 @@ align 8
 
 RAND_FALLBACK_SEED dq 0DDB2BD6C9BB22173h
 
+; SplitMix64 constants (use memory loads — avoids large immediate errors)
+SM64_INC   dq 09E3779B97F4A7C15h
+SM64_MUL1  dq 0BF58476D1CE4E5B9h
+SM64_MUL2  dq 094D049BB133111EBh
+
 ; Example PCG64 constants (documented placeholders; unused for now):
 ; pcg64_mult      dq 5851F42D4C957F2Dh
 ; pcg64_inc       dq 14057B7EF767814Fh
@@ -61,7 +66,7 @@ rand_seed PROC state:QWORD
     
     ; Zero seed case - use non-zero fallback
     ; Choose a prime number with good bit distribution
-    mov     rcx, QWORD PTR RAND_FALLBACK_SEED ; Large 64-bit prime as fallback seed
+    mov     rcx, QWORD PTR [RAND_FALLBACK_SEED] ; Large 64-bit prime as fallback seed
 
 @use_input:
     ; Store new state (either input or fallback)
@@ -72,19 +77,63 @@ rand_seed PROC state:QWORD
 
 rand_seed ENDP
 
+
 ;________________________________________
 ; rand_u64()
 ; Returns:
-;   CF=0, RAX = 0  (stub)
+;   CF=0, RAX = next 64-bit unsigned random value
 ; Notes:
-;   - Placeholder. Swap in real step (e.g., PCG/LCG) later.
+;   - Implements the SplitMix64 output function:
+;       state += SM64_INC
+;       z = state
+;       z ^= z >> 30; z *= SM64_MUL1
+;       z ^= z >> 27; z *= SM64_MUL2
+;       z ^= z >> 31
+;       return z
+;   - Advances the internal PRNG state stored at `g_rand_state`.
+;   - Deterministic for a given seed; NOT cryptographically secure.
+;   - Uses memory-resident 64-bit constants (`SM64_INC`, `SM64_MUL1`, `SM64_MUL2`)
+;     to avoid assembler limitations on large immediates.
+;   - Side-effect: updates `g_rand_state`.
+;   - Returns with CF cleared (CF=0) on success.
+;   - Preserves non-volatile registers (RBX, RBP, RSI, RDI, R12–R15).
+;   - Clobbers volatile registers: RAX, RCX, RDX.
 ;________________________________________
 rand_u64 PROC
     SAFE_PROLOGUE
 
-    xor     rax, rax                ; stub value
-    RET_OK
+    ; load state, add increment (load increment from memory to avoid imm64)
+    mov     rax, [g_rand_state]
+    mov     rcx, qword ptr [SM64_INC]
+    add     rax, rcx
+    mov     [g_rand_state], rax
 
+    ; SplitMix64 transform:
+    ; z = rax
+    ; z ^= (z >> 30)
+    mov     rcx, rax
+    shr     rcx, 30
+    xor     rax, rcx
+
+    ; z *= 0xBF58476D1CE4E5B9
+    mov     rcx, qword ptr [SM64_MUL1]
+    mul     rcx                ; RDX:RAX = RAX * RCX, result low64 -> RAX
+
+    ; z ^= (z >> 27)
+    mov     rcx, rax
+    shr     rcx, 27
+    xor     rax, rcx
+
+    ; z *= 0x94D049BB133111EB
+    mov     rcx, qword ptr [SM64_MUL2]
+    mul     rcx
+
+    ; z ^= (z >> 31)
+    mov     rcx, rax
+    shr     rcx, 31
+    xor     rax, rcx
+
+    RET_OK
 rand_u64 ENDP
 
 ;________________________________________
