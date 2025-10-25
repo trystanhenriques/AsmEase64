@@ -137,6 +137,23 @@ rand_u64 PROC
 rand_u64 ENDP
 
 ;________________________________________
+; rand_s64()
+; Returns:
+;   CF=0, RAX = next signed 64-bit random value (i64)
+; Notes:
+;   - Thin wrapper around `rand_u64`; returns the same 64-bit bit pattern.
+;   - Use `io_print_int` in tests to view signed decimal interpretation.
+;________________________________________
+rand_s64 PROC
+    SAFE_PROLOGUE
+
+    call    rand_u64    ; RAX <- next 64-bit pattern (unsigned bits)
+
+    ; Return with CF clear (RET_OK also restores this procs stack)
+    RET_OK
+rand_s64 ENDP
+
+;________________________________________
 ; rand_bool()
 ; Returns:
 ;   CF=0, AL = 0/1  (stub currently always 0)
