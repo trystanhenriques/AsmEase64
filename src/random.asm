@@ -27,6 +27,9 @@ g_rand_state    dq 0                ; PRNG state (placeholder seed)
 ; (Optional) if you plan PCG/LCG later, park constants here now.
 .const
 align 8
+
+RAND_FALLBACK_SEED dq 0DDB2BD6C9BB22173h
+
 ; Example PCG64 constants (documented placeholders; unused for now):
 ; pcg64_mult      dq 5851F42D4C957F2Dh
 ; pcg64_inc       dq 14057B7EF767814Fh
@@ -42,16 +45,30 @@ align 8
 ; Returns:
 ;   CF=0, RAX = previous state
 ; Notes:
-;   - This stub already swaps the state (safe & useful).
-;   - Does not force a nonzero seed; you can enforce that later.
-;   - Preserves all non-volatile regs it does not modify (none).
+;   - If input is 0, uses a non-zero fallback to avoid PRNG getting stuck
+;   - Always clears CF on return (no error cases)
+;   - Preserves all non-volatile registers
 ;________________________________________
 rand_seed PROC state:QWORD
     SAFE_PROLOGUE
+    
+    ; Save old state first (required for return value)
+    mov     rax, [g_rand_state]     ; old state -> RAX for return
 
-    mov     rax, [g_rand_state]     ; old
-    mov     [g_rand_state], rcx     ; set new
-    RET_OK                          ; CF=0
+    ; Check if new state is zero
+    test    rcx, rcx
+    jnz     @use_input              ; if input non-zero, use it directly
+    
+    ; Zero seed case - use non-zero fallback
+    ; Choose a prime number with good bit distribution
+    mov     rcx, QWORD PTR RAND_FALLBACK_SEED ; Large 64-bit prime as fallback seed
+
+@use_input:
+    ; Store new state (either input or fallback)
+    mov     [g_rand_state], rcx
+    
+    ; RAX already contains old state
+    RET_OK                          ; CF=0, return old state in RAX
 
 rand_seed ENDP
 
