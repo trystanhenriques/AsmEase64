@@ -183,22 +183,40 @@ rand_bool ENDP
 ; RCX = max (exclusive)
 ; Returns:
 ;   CF=1, RAX=0          if max == 0   (bad arg)
-;   CF=0, RAX in [0,max) (stub currently always 0)
+;   CF=0, RAX in [0,max) otherwise.
 ; Notes:
-;   - Placeholder. Later: use 128-bit multiply/reject to avoid bias.
+;   - Uses multiply-high rejection sampling to avoid modulo bias:
+;       threshold = (-max) % max
+;       loop: x = rand_u64(); product = x * max; low = low64(product)
+;             if low >= threshold: return high64(product)
+;   - Deterministic for a given seed; NOT cryptographically secure.
+;   - Preserves non-volatile registers (RBX, RBP, RSI, RDI, R12–R15).
+;   - Clobbers volatile registers used by helpers (RAX, RCX, RDX, R8, R9).
 ;________________________________________
 rand_range PROC max_exclusive:QWORD
     SAFE_PROLOGUE
 
-    test    rcx, rcx
-    jnz     @ok
-      xor     eax, eax              ; RAX = 0
-      stc                           ; CF=1 (bad arg)
-      SAFE_EPILOGUE
-@ok:
-    xor     eax, eax                ; stub: always 0 in range
-    RET_OK
+    ; Return error if max == 0
+    CHECK_LEN_NONZERO rcx, ERR_BADARG
 
+    ; Save max to a volatile temp because rand_u64 clobbers RCX
+    mov     r9, rcx            ; r9 = max
+
+    ; threshold = (-max) % max
+    mov     rax, r9
+    neg     rax                ; rax = -max (unsigned)
+    xor     rdx, rdx
+    div     r9                 ; rdx = (-max) % max
+    mov     r8, rdx            ; r8 = threshold
+
+@sample:
+    call    rand_u64           ; RAX = random64 (rand_u64 clobbers RCX/RDX)
+    mul     r9                 ; RDX:RAX = RAX * max
+                              ; low64 in RAX, high64 in RDX
+    cmp     rax, r8            ; if low < threshold -> reject
+    jb      @sample
+    mov     rax, rdx           ; return high64(product) in RAX
+    RET_OK
 rand_range ENDP
 
 END
