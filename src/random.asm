@@ -153,19 +153,29 @@ rand_s64 PROC
     RET_OK
 rand_s64 ENDP
 
+
 ;________________________________________
 ; rand_bool()
 ; Returns:
-;   CF=0, AL = 0/1  (stub currently always 0)
+;   CF=0, AL = 0 or 1 (RAX zero-extended)
 ; Notes:
-;   - Placeholder. Later: derive from rand_u64 & mask bit 0.
+;   - Calls `rand_u64` to obtain 64 random bits and returns the least-significant bit.
+;   - Deterministic for a given seed; NOT cryptographically secure.
+;   - Preserves non-volatile registers (RBX, RBP, RSI, RDI, R12–R15).
+;   - Clobbers volatile registers used by `rand_u64` (RAX, RCX, RDX).
+;   - Returns with CF cleared on success.
 ;________________________________________
 rand_bool PROC
     SAFE_PROLOGUE
-
-    xor     eax, eax                ; stub: always 0
-    RET_OK
-
+    
+    ; Get 64 random bits using rand_u64
+    call    rand_u64            ; RAX = random 64-bit value
+    
+    ; Extract lowest bit (AND with 1)
+    and     al, 1              ; AL = RAX & 1 (keeps only bit 0)
+                               ; Result is already zero-extended
+    
+    RET_OK                     ; CF=0, return bool in AL
 rand_bool ENDP
 
 ;________________________________________
