@@ -219,4 +219,49 @@ rand_range PROC max_exclusive:QWORD
     RET_OK
 rand_range ENDP
 
+
+;________________________________________
+; rand_range_s64(min_inclusive, max_exclusive)
+; RCX = min_inclusive (i64)
+; RDX = max_exclusive (i64)
+; Returns:
+;   CF=1, RAX=ERR_BADARG (in EAX) if min >= max
+;   CF=0, RAX in [min, max) otherwise.
+; Notes:
+;   - Computes width = (uint64_t)(max - min), delegates to rand_range(width),
+;     then returns min + result.
+;   - Preserves non-volatile registers; uses the procedure stack slot to
+;     hold `min` across the call to `rand_range`.
+;________________________________________
+rand_range_s64 PROC min_inclusive:QWORD, max_exclusive:QWORD
+    SAFE_PROLOGUE
+
+    ; Validate: min < max (signed)
+    cmp     rcx, rdx
+    jl      @ok_s64
+      RET_ERR ERR_BADARG
+@ok_s64:
+    ; Save min on the stack (SAFE_PROLOGUE reserved space)
+    mov     qword ptr [rsp], rcx
+
+    ; width = max - min  (unsigned arithmetic)
+    mov     rax, rdx
+    sub     rax, rcx        ; rax = width
+    mov     rcx, rax        ; prepare param for rand_range
+
+    call    rand_range
+    jc      @prop_err_s64   ; propagate error from rand_range (EAX/CF preserved)
+
+    ; success: add min back to the offset and return
+    mov     rdx, qword ptr [rsp]
+    add     rax, rdx
+    RET_OK
+
+@prop_err_s64:
+    ; rand_range left error code in EAX and CF set; return preserving them
+    SAFE_EPILOGUE
+rand_range_s64 ENDP
+
+
+
 END
