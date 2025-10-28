@@ -45,6 +45,6 @@ rand_range          PROTO :QWORD
 ; RDX = max_exclusive (i64)
 ; Returns: CF=1, RAX=0 if min >= max (bad arg)
 ;          CF=0, RAX in [min, max) otherwise.
-rand_range_i64      PROTO :QWORD, :QWORD
+rand_range_s64      PROTO :QWORD, :QWORD
 
 ENDIF
