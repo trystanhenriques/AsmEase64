@@ -1,4 +1,3 @@
-
 ; Make case sensitive and disable MASM's auto prologue/epilogue.
 OPTION casemap:none
 OPTION prologue:none, epilogue:none
@@ -127,6 +126,10 @@ str_length PROC src:QWORD, max_len:QWORD
     CHECK_NULL        rcx, ERR_NULLPTR      ; src
     CHECK_LEN_NONZERO rdx, ERR_LEN_ZERO     ; max_len > 0
 
+    ; preserve non-volatiles used by scasb
+    push    rdi
+    push    rsi
+
     ; scan for NUL up to max_len
     mov   rsi, rcx            ; keep base
     mov   rdi, rcx            ; scan ptr
@@ -141,11 +144,15 @@ str_length PROC src:QWORD, max_len:QWORD
     mov   rax, rdi
     sub   rax, rsi            ; bytes including the NUL
     dec   rax                 ; exclude the NUL itself
-    RET_OK
+    jmp   sl_epilogue
 
 sl_not_found:
     ; no NUL in window -> length == max_len (RDX unchanged)
     mov   rax, rdx
+
+sl_epilogue:
+    pop   rsi
+    pop   rdi
     RET_OK
 str_length ENDP
 
@@ -181,6 +188,10 @@ str_compare PROC a:QWORD, a_len:QWORD, b:QWORD, b_len:QWORD
     ; ---- validate pointers ----
     CHECK_NULL rcx, ERR_NULLPTR      ; a
     CHECK_NULL r8,  ERR_NULLPTR      ; b
+
+    ; preserve non-volatiles used by cmpsb
+    push    rdi
+    push    rsi
 
     ; ---- set up ----
     mov     rsi, rcx                 ; rsi = a
@@ -221,18 +232,21 @@ sc_mismatch:
 
 sc_equal:
     xor     eax, eax                 ; 0
-    RET_OK
+    jmp     sc_epilogue
 
 sc_a_lt_b:
     mov     rax, -1                  ; **64-bit -1**
-    RET_OK
+    jmp     sc_epilogue
 
 sc_a_gt_b:
     mov     rax, 1                   ; **64-bit +1**
+
+sc_epilogue:
+    pop     rsi
+    pop     rdi
     RET_OK
 
 str_compare ENDP
-
 
 
 ; =====================
@@ -273,6 +287,10 @@ str_trim PROC base:QWORD, len:QWORD
     RET_OK
 
 st_nonempty:
+    ; preserve non-volatiles before using rdi/rsi
+    push    rdi
+    push    rsi
+
     ; r10 = i (leading index), r11 = j (trailing end = len)
     xor     r10, r10                     ; i = 0
     mov     r11, rdx                     ; j = len
@@ -331,10 +349,14 @@ st_trail_done:
     rep movsb                            ; forward copy safe (dst < src)
 
 st_ret_ok:
+    pop     rsi
+    pop     rdi
     RET_OK
 
 st_all_trimmed:
     xor     rax, rax                     ; 0
+    pop     rsi
+    pop     rdi
     RET_OK
 str_trim ENDP
 
@@ -372,6 +394,8 @@ str_to_upper PROC base:QWORD, len:QWORD
     RET_OK
 
 stu_nonempty:
+    push    rdi                      ; preserve RDI
+
     mov     rdi, rcx                 ; rdi = write/read ptr
     mov     rcx, rdx                 ; rcx = count
     mov     rax, rdx                 ; rax = return value (len)
@@ -389,6 +413,7 @@ stu_next:
     dec     rcx
     jnz     stu_loop
 
+    pop     rdi
     RET_OK
 str_to_upper ENDP
 
@@ -426,6 +451,8 @@ str_to_lower PROC base:QWORD, len:QWORD
     RET_OK
 
 stl_nonempty:
+    push    rdi                      ; preserve RDI
+
     mov     rdi, rcx                 ; rdi = write/read ptr
     mov     rcx, rdx                 ; rcx = count
     mov     rax, rdx                 ; rax = return value (len)
@@ -443,6 +470,7 @@ stl_next:
     dec     rcx
     jnz     stl_loop
 
+    pop     rdi
     RET_OK
 str_to_lower ENDP
 
@@ -479,6 +507,10 @@ str_reverse PROC base:QWORD, len:QWORD
     cmp     rdx, 1
     je      sr_done_ok                   ; len==1
 
+    ; preserve non-volatiles used (rdi,rsi)
+    push    rdi
+    push    rsi
+
     ; rdi -> front, rsi -> back, rcx = swaps = len/2
     mov     rdi, rcx                     ; rdi = base
     lea     rsi, [rcx + rdx - 1]         ; rsi = base + len - 1
@@ -494,6 +526,9 @@ sr_loop:
     dec     rsi
     dec     rcx
     jnz     sr_loop
+
+    pop     rsi
+    pop     rdi
 
 sr_done_ok:
     RET_OK
@@ -530,16 +565,20 @@ str_fill PROC base:QWORD, len:QWORD, byteval:QWORD
     test    rdx, rdx
     jz      sf_done_ok                   ; nothing to write
 
-    ; rdi = dst, rcx = count, r9b = byte to write
-    mov     rdi, rcx
-    mov     rcx, rdx
-    mov     r9b, r8b
+    ; preserve RDI and process
+    push    rdi
+    mov     rdi, rcx                     ; rdi = p
+    mov     rcx, rdx                     ; rcx = remaining
+    mov     r9b, r8b                    ; r9b = byte to write
 
 sf_loop:
     mov     byte ptr [rdi], r9b
     inc     rdi
     dec     rcx
     jnz     sf_loop
+
+    pop     rdi
+    RET_OK
 
 sf_done_ok:
     RET_OK
@@ -583,6 +622,10 @@ str_find_char PROC base:QWORD, len:QWORD, byteval:QWORD
     RET_OK
 
 sfc_scan:
+    ; preserve non-volatiles used by scasb
+    push    rdi
+    push    rsi
+
     mov     rsi, rcx                     ; keep base for index math
     mov     rdi, rcx                     ; scan pointer
     mov     rcx, rdx                     ; count = len
@@ -595,10 +638,14 @@ sfc_scan:
     ; found: rdi points just past the matched byte
     lea     rax, [rdi-1]                 ; address of match
     sub     rax, rsi                     ; index = (rdi-1) - base
-    RET_OK
+    jmp     sfc_epilogue
 
 sfc_notfound:
     mov     rax, STR_NPOS
+
+sfc_epilogue:
+    pop     rsi
+    pop     rdi
     RET_OK
 str_find_char ENDP
 
@@ -635,7 +682,8 @@ str_replace_char PROC base:QWORD, len:QWORD, oldch:QWORD, newch:QWORD
     test    rdx, rdx
     jz      src_done_ok
 
-    ; setup
+    ; preserve RDI and process
+    push    rdi
     mov     rdi, rcx                     ; rdi = p
     mov     rcx, rdx                     ; rcx = remaining
     mov     r10b, r8b                    ; r10b = oldch
@@ -656,6 +704,9 @@ src_next:
     inc     rdi
     dec     rcx
     jnz     src_loop
+
+    pop     rdi
+    RET_OK
 
 src_done_ok:
     RET_OK
