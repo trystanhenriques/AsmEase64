@@ -16,6 +16,7 @@ INCLUDE array.inc
 INCLUDE string.inc
 INCLUDE io.inc
 INCLUDE random.inc
+INCLUDE math.inc
 
 ; header guard end
 ENDIF

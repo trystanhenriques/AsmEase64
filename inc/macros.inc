@@ -61,5 +61,13 @@ CHECK_CAPACITY MACRO needReg:REQ, capReg:REQ, code:REQ
 @@:
 ENDM
 
+; Ensure a <= b; else return code (e.g., clamp requires min <= max)
+CHECK_ORDER MACRO aReg:REQ, bReg:REQ, code:REQ
+    cmp aReg, bReg
+    jle @F
+      RET_ERR code
+@@:
+ENDM
+
 
 ENDIF ; end header guard
