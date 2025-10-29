@@ -10,6 +10,8 @@ ERR_NULLPTR          EQU 1
 ERR_OUT_OF_RANGE     EQU 2
 ERR_LEN_ZERO         EQU 3
 ERR_CAPACITY         EQU 4
+ERR_OVERFLOW         EQU 5    ; arithmetic overflow (result does not fit)
+
 
 ; Back-compat aliases (so existing code keeps building)
 ARR_OK                EQU 0    ; success (no error); operation completed, CF will be clear.
