@@ -28,4 +28,38 @@ math_abs PROC value:QWORD
 math_abs ENDP
 
 
+; -------------------------------------------------------
+; math_clamp (s64 value, s64 min, s64 max) -> s64 clamped
+; RCX: value, RDX: min, R8: max
+; Returns:
+;   CF=0, RAX = clamped value
+;   CF=1, EAX = ERR_BADARG if min > max
+; Clobbers: RAX
+; -------------------------------------------------------
+math_clamp PROC value:QWORD, min:QWORD, max:QWORD
+    SAFE_PROLOGUE
+
+    ; Validate range: require min <= max
+    CHECK_ORDER rdx, r8, ERR_BADARG
+
+    ; Default result = value
+    mov     rax, rcx
+
+    ; if (value < min) result = min;
+    cmp     rcx, rdx
+    jge     @check_max
+    mov     rax, rdx
+    jmp     @done
+
+@check_max:
+    ; if (value > max) result = max;
+    cmp     rcx, r8
+    jle     @done
+    mov     rax, r8
+
+@done:
+    RET_OK
+math_clamp ENDP
+
+
 END
