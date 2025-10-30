@@ -61,5 +61,29 @@ math_clamp PROC value:QWORD, min:QWORD, max:QWORD
     RET_OK
 math_clamp ENDP
 
+; -------------------------------------------------------
+; math_sign (s64 value) -> -1 if value<0, 0 if value==0, +1 if value>0
+; RCX: input value (s64)
+; Returns:
+;   CF=0, RAX in {-1, 0, 1}
+; Clobbers: RAX, RDX
+; Notes:
+;   Branchless formulation:
+;     sign = (x >> 63) | (x != 0)
+;     where (x >> 63) is -1 for negatives and 0 otherwise.
+; -------------------------------------------------------
+math_sign PROC value:QWORD
+    SAFE_PROLOGUE
+
+    mov     rax, rcx
+    sar     rax, 63            ; rax = -1 if x<0, else 0
+    test    rcx, rcx
+    setne   dl                 ; dl = 1 if x != 0, else 0
+    movzx   rdx, dl            ; rdx = 0 or 1
+    or      rax, rdx           ; negatives stay -1, positives become +1, zero stays 0
+
+    RET_OK
+math_sign ENDP
+
 
 END
