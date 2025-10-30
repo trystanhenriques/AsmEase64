@@ -194,4 +194,41 @@ mp_ret_ok:
 math_power ENDP
 
 
+; -------------------------------------------------------
+; math_is_even (u64 value) -> 1 if even, 0 otherwise
+; RCX: input value (u64)
+; Returns:
+;   CF=0, RAX in {0,1}
+; Clobbers: RAX
+; Notes:
+;   Branchless: test LSB and use SETZ.
+; -------------------------------------------------------
+math_is_even PROC value:QWORD
+    SAFE_PROLOGUE
+    test    rcx, 1
+    setz    al                 ; AL=1 when (value&1)==0
+    movzx   rax, al
+    RET_OK
+math_is_even ENDP
+
+
+
+; -------------------------------------------------------
+; math_is_odd (u64 value) -> 1 if odd, 0 otherwise
+; RCX: input value (u64)
+; Returns:
+;   CF=0, RAX in {0,1}
+; Clobbers: RAX
+; Notes:
+;   Branchless: test LSB and use SETNZ.
+; -------------------------------------------------------
+math_is_odd PROC value:QWORD
+    SAFE_PROLOGUE
+    test    rcx, 1
+    setnz   al                 ; AL=1 when (value&1)!=0
+    movzx   rax, al
+    RET_OK
+math_is_odd ENDP
+
+
 END
