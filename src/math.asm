@@ -86,4 +86,112 @@ math_sign PROC value:QWORD
 math_sign ENDP
 
 
+
+; -------------------------------------------------------
+; math_power (s64 base, u64 exp) -> s64 result
+; RCX: base (s64), RDX: exp (u64, non-negative)
+; Returns:
+;   Success: CF=0, RAX = base^exp
+;   Error:   CF=1, EAX = ERR_OVERFLOW on arithmetic overflow
+; Clobbers:
+;   RAX, RDX, R8, R9, R10, R11 (volatile)
+; Notes:
+;   - 0^0 returns 1
+;   - Exponentiation by squaring with explicit overflow checks.
+;   - Keep the running result in R8 so squaring 'a' (R10) doesn't clobber it.
+;   - Final sign applied at end; magnitude bound depends on final sign:
+;       INT64_MAX for non-negative, 2^63 for negative final result.
+; -------------------------------------------------------
+math_power PROC base:QWORD, exp:QWORD
+    SAFE_PROLOGUE
+
+    ; Fast path: exp == 0 -> 1 (including 0^0)
+    mov     r9, rdx                    ; r9 = exp
+    test    r9, r9
+    jnz     mp_start
+    mov     rax, 1
+    RET_OK
+
+mp_start:
+    ; a = |base| in r10
+    mov     r10, rcx
+    mov     rdx, rcx
+    sar     rdx, 63
+    xor     r10, rdx
+    sub     r10, rdx                   ; r10 = |base|
+
+    ; finalNeg = (base<0) && (exp odd)
+    mov     r11, rcx
+    sar     r11, 63
+    and     r11, 1                     ; r11 = baseNeg (0/1)
+    test    r9, 1
+    setne   al                         ; AL = 1 if exp odd
+    and     al, r11b
+    mov     byte ptr [rsp+08h], al     ; save final sign
+
+    ; maxAllowed (magnitude bound) depending on final sign
+    mov     r11, 7FFFFFFFFFFFFFFFh     ; INT64_MAX
+    cmp     byte ptr [rsp+08h], 0
+    je      mp_bound_ok
+    mov     r11, 8000000000000000h     ; allow up to 2^63 if final negative
+mp_bound_ok:
+
+    ; result in R8 (keep separate from RAX used by MUL/DIV)
+    mov     r8, 1
+
+mp_loop:
+    ; if (exp & 1) result *= a
+    test    r9, 1
+    jz      mp_after_mul
+
+    ; If a == 0 -> result = 0
+    test    r10, r10
+    jnz     mp_mul_check
+    xor     r8, r8
+    jmp     mp_after_mul
+
+mp_mul_check:
+    ; Bound check: result <= maxAllowed / a
+    mov     rax, r11
+    xor     edx, edx
+    div     r10                        ; RAX = floor(maxAllowed / a)
+    cmp     r8, rax
+    ja      mp_overflow
+
+    ; result *= a
+    mov     rax, r8
+    mul     r10                        ; RDX:RAX = result * a
+    ; by bound check, RDX must be 0
+    mov     r8, rax
+
+mp_after_mul:
+    ; exp >>= 1; if zero, finish
+    shr     r9, 1
+    test    r9, r9
+    jz      mp_done
+
+    ; a = a * a (ensure it fits in 64-bit)
+    mov     rax, r10
+    mul     r10                        ; RDX:RAX = a*a
+    test    rdx, rdx
+    jnz     mp_overflow
+    mov     r10, rax
+    jmp     mp_loop
+
+mp_overflow:
+    mov     eax, ERR_OVERFLOW
+    stc
+    SAFE_EPILOGUE
+
+mp_done:
+    ; move result to RAX and apply final sign
+    mov     rax, r8
+    cmp     byte ptr [rsp+08h], 0
+    je      mp_ret_ok
+    neg     rax
+mp_ret_ok:
+    RET_OK
+math_power ENDP
+
+
 END
