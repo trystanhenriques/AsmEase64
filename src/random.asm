@@ -1,16 +1,12 @@
 ;=========================================================
 ; random.asm
-; Pseudo-random utilities (module scaffold)
+; Pseudo-random utilities (SplitMix64-based)
 ;=========================================================
-; This file sets up:
-;   - Private PRNG state storage
-;   - Constants/slots for a future algorithm (e.g., PCG/LCG)
-;   - Public procedure stubs (no real RNG yet)
-;   - Consistent prologue/epilogue macros from your lib
-;
-; NOTE: The bodies below are intentional stubs so you can wire
-;       the module into the build now. You’ll drop in real
-;       implementations later without touching callers.
+; Provides:
+;   - rand_seed / rand_seed_auto (explicit/auto seeding)
+;   - rand_u64 / rand_s64 / rand_bool
+;   - rand_range / rand_range_s64 (bias-free)
+; Uses SAFE_PROLOGUE/SAFE_EPILOGUE and Win64 ABI.
 ;=========================================================
 
 INCLUDE macros.inc
