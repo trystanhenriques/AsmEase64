@@ -1,4 +1,3 @@
-OPTION casemap:none
 
 INCLUDE math.inc
 
@@ -98,7 +97,7 @@ math_sign ENDP
 ; Notes:
 ;   - 0^0 returns 1
 ;   - Exponentiation by squaring with explicit overflow checks.
-;   - Keep the running result in R8 so squaring 'a' (R10) doesn't clobber it.
+;   - Keep the running result in R8 so squaring 'a (R10) doesn't clobber it.
 ;   - Final sign applied at end; magnitude bound depends on final sign:
 ;       INT64_MAX for non-negative, 2^63 for negative final result.
 ; -------------------------------------------------------
