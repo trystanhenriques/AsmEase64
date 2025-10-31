@@ -1,6 +1,4 @@
-;=========================================================
-; io.asm — I/O module (Windows console) — SKELETON
-;=========================================================
+
 OPTION casemap:none
 OPTION prologue:none, epilogue:none
 
@@ -8,21 +6,18 @@ INCLUDE io.inc                ; public API (prototypes, ERR_*, macros)
 INCLUDE win32_console.inc     ; private: EXTERN/INCLUDELIB for Win32 console
 
 ;---------------------------------------------------------
-; Private state (cached handles), optional init
+; Private state (cached handles)
 ;---------------------------------------------------------
 .data
-g_io_inited     dd 0
 align 8
 g_stdout        dq 0
 g_stdin         dq 0
 
 .const
 crlf_bytes      db 13,10        ; "\r\n"
-crlf_len        EQU ($-crlf_bytes)
 
 ; bit masks / patterns (avoid huge immediates in instructions)
 mask_abs      dq 7FFFFFFFFFFFFFFFh   ; clear sign
-mask_mant     dq 0000FFFFFFFFFFFFFh   ; mantissa
 pat_inf       dq 7FF0000000000000h    ; +INF (abs pattern)
 
 ; decimal helpers
@@ -43,42 +38,10 @@ pow10_q       dq 3FF0000000000000h    ; 1
 ; 10^n as uint64 (n = 0..9)
 pow10_u       dq 1,10,100,1000,10000,100000,1000000,10000000,100000000,1000000000
 
-; literals for special cases
-lit_inf       db "inf"
-lit_neginf    db "-inf"
-lit_nan       db "nan"
-
-
-;---------------------------------------------------------
-; .const
-;---------------------------------------------------------
-
-
-.const
-inf_str   db 'inf'
-inf_len   EQU ($-inf_str)
-ninf_str  db '-inf'
-ninf_len  EQU ($-ninf_str)
-nan_str   db 'nan'
-nan_len   EQU ($-nan_str)
-
-.const
-inf_bytes     db 'i','n','f'
-inf_len       EQU ($-inf_bytes)
-
-neginf_bytes  db '-','i','n','f'
-neginf_len    EQU ($-neginf_bytes)
-
-nan_bytes     db 'n','a','n'
-nan_len       EQU ($-nan_bytes)
-
 ; NUL-terminated literals for specials
 inf_cstr    db "inf",0
 ninf_cstr   db "-inf",0
 nan_cstr    db "nan",0
-
-
-
 
 ;---------------------------------------------------------
 ; .code
@@ -105,7 +68,6 @@ io_init PROC
     call  GetStdHandle
     mov   [g_stdin], rax
 
-    mov   dword ptr [g_io_inited], 1
     xor   rax, rax
     RET_OK
 io_init ENDP
@@ -145,7 +107,7 @@ _io_get_stdin ENDP
 
 
 ;=========================================================
-; Printing (placeholders)
+; Printing
 ;=========================================================
 
 
@@ -259,9 +221,6 @@ ips_do_write:
 
     SAFE_EPILOGUE
 io_print_string ENDP
-
-
-
 
 
 
@@ -504,6 +463,7 @@ ihx_md_ok:
 
 ihx_build:
     ; produce digits by nibbles (LSB first, written backward)
+
 ihx_loop:
     mov   rax, r11
     and   eax, 0Fh               ; nibble in AL (0..15)
@@ -529,6 +489,7 @@ ihx_pad:
     ; while (count < min_digits) { *--start = '0'; ++count; }
     cmp   ecx, r10d
     jae   ihx_len_ready
+
 ihx_pad_loop:
     dec   r9
     mov   byte ptr [r9], '0'
@@ -754,8 +715,6 @@ io_print_float ENDP
 
 
 
-
-
 ;________________________________________
 ; io_print_binary(value, min_bits)
 ;________________________________________
@@ -852,26 +811,6 @@ ib_done_zero:
 io_print_binary ENDP
 
 
-
-
-;io_print_mem PROC buf:QWORD, len:QWORD
-    ;SAFE_PROLOGUE
-    ;test rdx, rdx
-    ;jz   ipm_ok
-    ;CHECK_NULL rcx, ERR_NULLPTR        ; rcx == buf
-;ipm_ok:
-    ;xor  rax, rax
-    ;RET_OK
-;io_print_mem ENDP
-
-
-io_print_reg PROC value:QWORD, flags:QWORD
-    SAFE_PROLOGUE
-    xor rax, rax
-    RET_OK
-io_print_reg ENDP
-
-
 ;________________________________________
 ; io_print_newline()
 ;________________________________________
@@ -902,65 +841,6 @@ io_print_newline PROC
     xor   eax, eax
     RET_OK
 io_print_newline ENDP
-
-
-
-
-;=========================================================
-; Reading (placeholders)
-;=========================================================
-
-
-io_read_char PROC out_ptr:QWORD
-    SAFE_PROLOGUE
-    CHECK_NULL rcx, ERR_NULLPTR
-    xor rax, rax
-    RET_OK
-io_read_char ENDP
-
-
-
-io_read_string PROC dst:QWORD, dst_cap:QWORD
-    SAFE_PROLOGUE
-    test rdx, rdx
-    jz   irs_ok
-    CHECK_NULL rcx, ERR_NULLPTR
-irs_ok:
-    xor  rax, rax
-    RET_OK
-io_read_string ENDP
-
-
-io_read_int PROC out_ptr_qword:QWORD
-    SAFE_PROLOGUE
-    CHECK_NULL rcx, ERR_NULLPTR
-    xor rax, rax
-    RET_OK
-io_read_int ENDP
-
-
-io_read_uint PROC out_ptr_qword:QWORD
-    SAFE_PROLOGUE
-    CHECK_NULL rcx, ERR_NULLPTR
-    xor rax, rax
-    RET_OK
-io_read_uint ENDP
-
-
-io_read_hex PROC out_ptr_qword:QWORD
-    SAFE_PROLOGUE
-    CHECK_NULL rcx, ERR_NULLPTR
-    xor rax, rax
-    RET_OK
-io_read_hex ENDP
-
-
-io_read_binary PROC out_ptr_qword:QWORD
-    SAFE_PROLOGUE
-    CHECK_NULL rcx, ERR_NULLPTR
-    xor rax, rax
-    RET_OK
-io_read_binary ENDP
 
 
 END
