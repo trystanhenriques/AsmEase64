@@ -58,26 +58,10 @@ io_print_float     PROTO :QWORD, :QWORD, :QWORD               ; (double value, p
 ;io_print_mem       PROTO :QWORD, :QWORD                       ; (ptr, len) -> RAX=bytes
 
 ; Register/value printing helper (format flags TBA; e.g., hex/dec/pfx width)
-io_print_reg       PROTO :QWORD, :QWORD                       ; (u64 value, flags) -> RAX=bytes
+;io_print_reg       PROTO :QWORD, :QWORD                       ; (u64 value, flags) -> RAX=bytes
 
 ; CRLF convenience
 io_print_newline   PROTO                                       ; () -> RAX=bytes (2 for "\r\n")
 
-; ---- reading (from stdin) ----
-; Reads exactly one byte; stores at [out_ptr]; RAX=1 on success
-io_read_char       PROTO :QWORD                               ; (out_ptr) -> RAX=1
-
-; Reads a (possibly binary) sequence up to dst_cap or newline; returns length via RAX
-; Stops on '\n' (consumes it) or when dst_cap is reached. Does NOT append NUL.
-io_read_string     PROTO :QWORD, :QWORD                       ; (dst, dst_cap) -> RAX=len read
-
-; Parse signed/unsigned integer from input (decimal); RAX = value on success
-; Whitespace skipped; stops at first non-digit (or sign+digits for signed).
-io_read_int        PROTO :QWORD                               ; (out_ptr_qword) -> RAX=chars consumed
-io_read_uint       PROTO :QWORD                               ; (out_ptr_qword) -> RAX=chars consumed
-
-; Parse hex/binary strings into a u64; RAX = chars consumed
-io_read_hex        PROTO :QWORD                               ; (out_ptr_qword) -> RAX=chars consumed
-io_read_binary     PROTO :QWORD                               ; (out_ptr_qword) -> RAX=chars consumed
 
 ENDIF ; IO_INC_GUARD
