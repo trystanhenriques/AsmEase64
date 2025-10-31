@@ -1,4 +1,3 @@
-
 ; Make case sensitive
 OPTION casemap:none
 OPTION prologue:none, epilogue:none     ; we use SAFE_PROLOGUE/SAFE_EPILOGUE
@@ -12,11 +11,11 @@ INCLUDE array.inc
 ;________________________________________
 ; Returns:
 ;   CF=0, RAX = value            ; success
-;   CF=1, EAX = ARR_ERR_*        ; error
+;   CF=1, EAX = ERR_*            ; error
 ; Errors:
-;   ARR_ERR_NULLPTR   if base == NULL
-;   ARR_ERR_LEN_ZERO  if len  == 0
-;   ARR_ERR_OUTOFRANGE if index >= len
+;   ERR_NULLPTR     if base == NULL
+;   ERR_LEN_ZERO    if len  == 0
+;   ERR_OUT_OF_RANGE if index >= len
 ;________________________________________
 arr_get_value PROC base:QWORD, len:QWORD, index:QWORD
     SAFE_PROLOGUE
@@ -25,19 +24,19 @@ arr_get_value PROC base:QWORD, len:QWORD, index:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; 0 <= index < len
     cmp  r8, rdx
     jb   _in_range
-      RET_ERR ARR_ERR_OUTOFRANGE
+      RET_ERR ERR_OUT_OF_RANGE
 _in_range:
 
     ; load QWORD element
@@ -50,11 +49,11 @@ arr_get_value ENDP
 ;_______________________________________
 ; Returns:
 ;   CF=0                     ; success
-;   CF=1, EAX = ARR_ERR_*    ; error
+;   CF=1, EAX = ERR_*        ; error
 ; Errors:
-;   ARR_ERR_NULLPTR     if base == NULL
-;   ARR_ERR_LEN_ZERO    if len  == 0
-;   ARR_ERR_OUTOFRANGE  if index >= len
+;   ERR_NULLPTR     if base == NULL
+;   ERR_LEN_ZERO    if len  == 0
+;   ERR_OUT_OF_RANGE  if index >= len
 ;_______________________________________
 arr_set_value PROC base:QWORD, len:QWORD, index:QWORD, value:QWORD
     SAFE_PROLOGUE
@@ -64,19 +63,19 @@ arr_set_value PROC base:QWORD, len:QWORD, index:QWORD, value:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; bounds: index < len
     cmp  r8, rdx
     jb   _in_range
-      RET_ERR ARR_ERR_OUTOFRANGE
+      RET_ERR ERR_OUT_OF_RANGE
 _in_range:
 
     ; store the QWORD
@@ -90,10 +89,10 @@ arr_set_value ENDP
 ;__________________________________________________________
 ; Returns:
 ;   CF=0                     ; success
-;   CF=1, EAX = ARR_ERR_*    ; error
+;   CF=1, EAX = ERR_*        ; error
 ; Errors:
-;   ARR_ERR_NULLPTR     if base == NULL
-;   ARR_ERR_LEN_ZERO    if len  == 0
+;   ERR_NULLPTR     if base == NULL
+;   ERR_LEN_ZERO    if len  == 0
 ;__________________________________________________________
 arr_fill PROC base:QWORD, len:QWORD, value:QWORD
     SAFE_PROLOGUE
@@ -102,13 +101,13 @@ arr_fill PROC base:QWORD, len:QWORD, value:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; Fast fill: rep stosq (writes RAX to [RDI], RCX times)
@@ -129,10 +128,10 @@ arr_fill ENDP
 ;__________________________________________________________
 ; Returns:
 ;   CF=0                      ; success
-;   CF=1, EAX = ARR_ERR_*     ; error
+;   CF=1, EAX = ERR_*         ; error
 ; Errors:
-;   ARR_ERR_NULLPTR     if dst == NULL or src == NULL
-;   ARR_ERR_LEN_ZERO    if len  == 0
+;   ERR_NULLPTR     if dst == NULL or src == NULL
+;   ERR_LEN_ZERO    if len  == 0
 ; Behavior:
 ;   QWORD-wise copy of len elements (8 bytes each).
 ;   Overlap-safe (memmove semantics): chooses direction automatically.
@@ -199,10 +198,10 @@ _ok:
     RET_OK
 
 _null_err:
-    RET_ERR ARR_ERR_NULLPTR
+    RET_ERR ERR_NULLPTR
 
 _len_zero:
-    RET_ERR ARR_ERR_LEN_ZERO
+    RET_ERR ERR_LEN_ZERO
 arr_copy ENDP
 
 ;____________________________________________
@@ -210,10 +209,10 @@ arr_copy ENDP
 ;____________________________________________
 ; Returns:
 ;   CF=0                      ; success
-;   CF=1, EAX = ARR_ERR_*     ; error
+;   CF=1, EAX = ERR_*         ; error
 ; Errors:
-;   ARR_ERR_NULLPTR     if base == NULL
-;   ARR_ERR_LEN_ZERO    if len  == 0
+;   ERR_NULLPTR     if base == NULL
+;   ERR_LEN_ZERO    if len  == 0
 ;____________________________________________
 arr_reverse PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
@@ -222,13 +221,13 @@ arr_reverse PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; Preserve non-volatiles we will use (RDI, RSI)
@@ -262,19 +261,19 @@ _done_pop_ok:
     RET_OK
 arr_reverse ENDP
 
-;_____________________________________________________
+;__________________________________________________________
 ; arr_swap(base,len,i,j)
-;_____________________________________________________
+;__________________________________________________________
 ; Returns:
 ;   CF=0                      ; success
-;   CF=1, EAX = ARR_ERR_*     ; error
+;   CF=1, EAX = ERR_*         ; error
 ; Errors:
-;   ARR_ERR_NULLPTR     if base == NULL
-;   ARR_ERR_LEN_ZERO    if len  == 0
-;   ARR_ERR_OUTOFRANGE  if i >= len or j >= len
+;   ERR_NULLPTR     if base == NULL
+;   ERR_LEN_ZERO    if len  == 0
+;   ERR_OUT_OF_RANGE  if i >= len or j >= len
 ; Notes:
 ;   No-op if i == j.
-;_____________________________________________________
+;__________________________________________________________
 arr_swap PROC base:QWORD, len:QWORD, i:QWORD, j:QWORD
     SAFE_PROLOGUE
     ; Win64: RCX=base, RDX=len, R8=i, R9=j
@@ -282,23 +281,23 @@ arr_swap PROC base:QWORD, len:QWORD, i:QWORD, j:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; bounds: i < len, j < len
     cmp  r8, rdx
     jb   _i_ok
-      RET_ERR ARR_ERR_OUTOFRANGE
+      RET_ERR ERR_OUT_OF_RANGE
 _i_ok:
     cmp  r9, rdx
     jb   _j_ok
-      RET_ERR ARR_ERR_OUTOFRANGE
+      RET_ERR ERR_OUT_OF_RANGE
 _j_ok:
 
     ; same index -> nothing to do
@@ -322,10 +321,10 @@ arr_swap ENDP
 ; _____________________________________________________
 ; Returns:
 ;   CF=0, RAX = maximum QWORD value (unsigned compare)
-;   CF=1, EAX = ARR_ERR_*
+;   CF=1, EAX = ERR_*
 ; Errors:
-;   ARR_ERR_NULLPTR   if base == NULL
-;   ARR_ERR_LEN_ZERO  if len  == 0
+;   ERR_NULLPTR   if base == NULL
+;   ERR_LEN_ZERO  if len  == 0
 ; Notes:
 ;   Unsigned comparison (cmova). Works fine for nonnegative data.
 ; _____________________________________________________
@@ -336,13 +335,13 @@ arr_max PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; RAX := first element
@@ -372,10 +371,10 @@ arr_max ENDP
 ;__________________________________________
 ; Returns:
 ;   CF=0, RAX = min (unsigned compare)
-;   CF=1, EAX = ARR_ERR_*    ; error
+;   CF=1, EAX = ERR_*    ; error
 ; Errors:
-;   ARR_ERR_NULLPTR  if base == NULL
-;   ARR_ERR_LEN_ZERO if len  == 0
+;   ERR_NULLPTR  if base == NULL
+;   ERR_LEN_ZERO if len  == 0
 ; Notes:
 ;   Compares as UNSIGNED (use cmovb). For signed variant, use arr_smin.
 ;__________________________________________
@@ -386,13 +385,13 @@ arr_min PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; Initialize min with first element
@@ -424,10 +423,10 @@ arr_min ENDP
 ;_________________________________________
 ; Returns:
 ;   CF=0, RAX = index of maximum element (unsigned compare; first occurrence on ties)
-;   CF=1, EAX = ARR_ERR_*    ; error
+;   CF=1, EAX = ERR_*    ; error
 ; Errors:
-;   ARR_ERR_NULLPTR  if base == NULL
-;   ARR_ERR_LEN_ZERO if len  == 0
+;   ERR_NULLPTR  if base == NULL
+;   ERR_LEN_ZERO if len  == 0
 ;_________________________________________
 arr_index_of_max PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
@@ -436,13 +435,13 @@ arr_index_of_max PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; Track current max value in R8, index in R10
@@ -479,10 +478,10 @@ arr_index_of_max ENDP
 ;_____________________________________________________________
 ; Returns:
 ;   CF=0, RAX = index of minimum element (unsigned compare; first occurrence on ties)
-;   CF=1, EAX = ARR_ERR_*    ; error
+;   CF=1, EAX = ERR_*    ; error
 ; Errors:
-;   ARR_ERR_NULLPTR  if base == NULL
-;   ARR_ERR_LEN_ZERO if len  == 0
+;   ERR_NULLPTR  if base == NULL
+;   ERR_LEN_ZERO if len  == 0
 ;_____________________________________________________________
 arr_index_of_min PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
@@ -491,13 +490,13 @@ arr_index_of_min PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; current min value in R8, index in R10
@@ -534,10 +533,10 @@ arr_index_of_min ENDP
 ;________________________________________________________________
 ; Returns:
 ;   CF=0, RAX = signed maximum (two's-complement, first occurrence on ties)
-;   CF=1, EAX = ARR_ERR_*        ; error
+;   CF=1, EAX = ERR_*        ; error
 ; Errors:
-;   ARR_ERR_NULLPTR  if base == NULL
-;   ARR_ERR_LEN_ZERO if len  == 0
+;   ERR_NULLPTR  if base == NULL
+;   ERR_LEN_ZERO if len  == 0
 ;________________________________________________________________
 arr_smax PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
@@ -546,13 +545,13 @@ arr_smax PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; initialize with first element
@@ -582,10 +581,10 @@ arr_smax ENDP
 ;________________________________________________
 ; Returns:
 ;   CF=0, RAX = signed minimum (two's-complement)
-;   CF=1, EAX = ARR_ERR_*        ; error
+;   CF=1, EAX = ERR_*        ; error
 ; Errors:
-;   ARR_ERR_NULLPTR  if base == NULL
-;   ARR_ERR_LEN_ZERO if len  == 0
+;   ERR_NULLPTR  if base == NULL
+;   ERR_LEN_ZERO if len  == 0
 ;________________________________________________
 arr_smin PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
@@ -594,13 +593,13 @@ arr_smin PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; initialize with first element
@@ -630,10 +629,10 @@ arr_smin ENDP
 ;_______________________________________________________
 ; Returns:
 ;   CF=0, RAX = index of signed max (two's-complement; first occurrence on ties)
-;   CF=1, EAX = ARR_ERR_*        ; error
+;   CF=1, EAX = ERR_*        ; error
 ; Errors:
-;   ARR_ERR_NULLPTR  if base == NULL
-;   ARR_ERR_LEN_ZERO if len  == 0
+;   ERR_NULLPTR  if base == NULL
+;   ERR_LEN_ZERO if len  == 0
 ;_______________________________________________________
 arr_index_of_smax PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
@@ -642,13 +641,13 @@ arr_index_of_smax PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; current max value in R8 (signed), index in R10
@@ -685,10 +684,10 @@ arr_index_of_smax ENDP
 ;_______________________________________
 ; Returns:
 ;   CF=0, RAX = index of signed min (two's-complement; first occurrence on ties)
-;   CF=1, EAX = ARR_ERR_*        ; error
+;   CF=1, EAX = ERR_*        ; error
 ; Errors:
-;   ARR_ERR_NULLPTR  if base == NULL
-;   ARR_ERR_LEN_ZERO if len  == 0
+;   ERR_NULLPTR  if base == NULL
+;   ERR_LEN_ZERO if len  == 0
 ;_______________________________________
 arr_index_of_smin PROC base:QWORD, len:QWORD
     SAFE_PROLOGUE
@@ -697,13 +696,13 @@ arr_index_of_smin PROC base:QWORD, len:QWORD
     ; base must be non-NULL
     test rcx, rcx
     jnz  _base_ok
-      RET_ERR ARR_ERR_NULLPTR
+      RET_ERR ERR_NULLPTR
 _base_ok:
 
     ; len must be > 0
     test rdx, rdx
     jnz  _len_ok
-      RET_ERR ARR_ERR_LEN_ZERO
+      RET_ERR ERR_LEN_ZERO
 _len_ok:
 
     ; current min value in R8 (signed), index in R10
