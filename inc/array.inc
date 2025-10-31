@@ -15,7 +15,7 @@ INCLUDE errors.inc
 ;   Additional args use R8, R9, then stack (Win64)
 ; Returns:
 ;   Success: CF=0, RAX = value (if applicable), otherwise undefined
-;   Error:  CF=1, EAX = MYLIB_ERR_* (Constants)
+;   Error:  CF=1, EAX = ERR_* (Constants)
 ; Clobbers:
 ;   RAX, RCX, RDX, R8, R9, R10, R11 (volatile)
 ; _______________________________________________________

@@ -532,7 +532,7 @@ arr_index_of_min ENDP
 ; arr_smax(base,len)
 ;________________________________________________________________
 ; Returns:
-;   CF=0, RAX = signed maximum (two's-complement, first occurrence on ties)
+;   CF=0, RAX = signed maximum (twos-complement, first occurrence on ties)
 ;   CF=1, EAX = ERR_*        ; error
 ; Errors:
 ;   ERR_NULLPTR  if base == NULL
@@ -580,7 +580,7 @@ arr_smax ENDP
 ; arr_smin(base,len)
 ;________________________________________________
 ; Returns:
-;   CF=0, RAX = signed minimum (two's-complement)
+;   CF=0, RAX = signed minimum (twos-complement)
 ;   CF=1, EAX = ERR_*        ; error
 ; Errors:
 ;   ERR_NULLPTR  if base == NULL
@@ -628,7 +628,7 @@ arr_smin ENDP
 ; arr_index_of_smax(base,len)
 ;_______________________________________________________
 ; Returns:
-;   CF=0, RAX = index of signed max (two's-complement; first occurrence on ties)
+;   CF=0, RAX = index of signed max (twos-complement; first occurrence on ties)
 ;   CF=1, EAX = ERR_*        ; error
 ; Errors:
 ;   ERR_NULLPTR  if base == NULL
@@ -683,7 +683,7 @@ arr_index_of_smax ENDP
 ; arr_index_of_smin(base,len)
 ;_______________________________________
 ; Returns:
-;   CF=0, RAX = index of signed min (two's-complement; first occurrence on ties)
+;   CF=0, RAX = index of signed min (twos-complement; first occurrence on ties)
 ;   CF=1, EAX = ERR_*        ; error
 ; Errors:
 ;   ERR_NULLPTR  if base == NULL
