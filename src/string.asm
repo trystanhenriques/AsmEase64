@@ -1,4 +1,4 @@
-; Make case sensitive and disable MASM's auto prologue/epilogue.
+; Make case sensitive and disable MASMs auto prologue/epilogue.
 OPTION casemap:none
 OPTION prologue:none, epilogue:none
 
@@ -93,12 +93,6 @@ sc_bw_loop:
 str_copy ENDP
 
 
-; WIll implement this later!!!!!! 5 arg mess!
-;str_concat PROC dst:QWORD, dst_len:QWORD, dst_cap:QWORD, src:QWORD, src_len:QWORD
-    ;SAFE_PROLOGUE
-    ; body pending
-    ;RET_ERR ARR_ERR_NULLPTR
-;str_concat ENDP
 
 ; =====================
 ; Length & Compare
@@ -696,7 +690,7 @@ src_loop:
     jne     src_next
     ; match
     cmp     r10b, r11b
-    je      src_count_only               ; old==new: don't write, just count
+    je      src_count_only               ; old==new: dont write, just count
     mov     [rdi], r11b
 src_count_only:
     inc     rax
