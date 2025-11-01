@@ -19,3 +19,4 @@
 *.exe binary
 
 *.asm linguist-language=NASM
+*.inc linguist-language=NASM
