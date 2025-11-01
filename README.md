@@ -7,6 +7,25 @@ A modern, easy-to-use x86-64 Assembly library for Windows that streamlines low-l
 [![Language](https://img.shields.io/badge/language-Assembly-green.svg)]()
 [![Build](https://img.shields.io/badge/build-stable-brightgreen.svg)]()
 
+---
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Minimal Example](#minimal-example)
+- [Project Structure](#project-structure)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Visual Studio Integration](#visual-studio-integration)
+  - [Command-Line Setup (ML64 + LINK)](#command-line-setup-ml64--link)
+- [Documentation](#documentation)
+- [Error Handling](#error-handling)
+- [Library Design & Conventions](#library-design--conventions)
+- [Testing](#testing)
+- [License](#license)
+
+---
 
 ## Overview
 
