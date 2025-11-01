@@ -42,6 +42,32 @@ AsmEase64 is organized into modular subsystems, each designed to handle a specif
 - 🔜 **Debug Module (`dbg_*`)** — Planned stack and register dump utilities for runtime inspection.  
 - 🔜 **Utility Module (`util_*`)** — Planned general-purpose helpers (timing, memory, conversions, assertions).
 
+---
+
+### Minimal Example
+
+A simple “Hello, world” using AsmEase64’s I/O subsystem:  
+
+```nasm
+; Example: hello.asm
+include AsmEase64.inc
+
+.data
+msg db "Hello from AsmEase64!", 0
+
+.code
+main PROC
+    mov rcx, OFFSET msg        ; RCX = pointer to string
+    call io_print_string       ; prints the string
+    call io_print_newline      ; prints CRLF ("\r\n")
+    ret
+main ENDP
+END main
+```
+
+No manual stack alignment or shadow-space allocation needed —
+AsmEase64 handles all of it internally so your code stays clean and predictable.
+
 ## Project Structure
 
 AsmEase64 is organized into modular directories for clarity and maintainability.  
@@ -53,6 +79,6 @@ Each folder contains focused components — headers, source files, and test prog
 - **`README.md`** – Project overview and documentation entry point.  
 - **`docs/`** – Comprehensive documentation and examples  
   - `procs.md` – Detailed list of all public procedures  
-  - `reference.md` – User-friendly IMGUI-style guide  
+  - `reference.md` – User-friendly guide  
   - `examples/` – Example `.asm` programs demonstrating each module
 
