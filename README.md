@@ -8,3 +8,23 @@ A modern, easy-to-use x86-64 Assembly library for Windows that streamlines low-l
 [![Build](https://img.shields.io/badge/build-stable-brightgreen.svg)]()
 
 
+## Overview
+
+AsmEase64 is a modular x86-64 Assembly library built for Windows developers using MASM.  
+It provides a clean, consistent set of low-level procedures that simplify the most repetitive and error-prone parts of assembly development — including stack management, calling conventions, and console I/O.
+
+Instead of manually dealing with shadow space, alignment, or register preservation, AsmEase64 abstracts these details so you can focus purely on your logic.  
+Every procedure follows the Windows x64 calling convention, uses standardized error codes, and maintains consistent naming and parameter rules across all modules.
+
+### Design Goals
+- **Ease of Use** — Make assembly development approachable without sacrificing performance.  
+- **Safety** — Prevent common pitfalls like stack misalignment and register corruption.  
+- **Consistency** — Unified calling conventions, return rules, and error handling across all modules.  
+- **Transparency** — Source code is fully documented and open for learning or modification.
+
+### Core Capabilities
+- Built-in stack alignment and shadow-space handling.  
+- Unified error handling system with symbolic constants (`ERR_*`).  
+- Modular design with subsystems for I/O, arrays, strings, math, and random generation.  
+- Clean, predictable naming scheme (`prefix_action_object`).  
+- Ready-to-extend architecture for future utilities, debugging, and system operations.
