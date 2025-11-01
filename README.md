@@ -90,7 +90,7 @@ error:
     call io_print_int
     ret
 main ENDP
-END
+END main
 ```
 
 **Output:**
@@ -159,7 +159,7 @@ You only need these two directories:
 #### 🟣 Option 2 — Clone the Repository
 If you want the full source for editing or debugging:
 ```bash
-git clone https://github.com/<yourusername>/AsmEase64.git
+git clone https://github.com/trystanhenriques/AsmEase64.git
 cd AsmEase64
 ```
 
@@ -184,14 +184,14 @@ Follow these steps to configure your project:
 
 #### 1️⃣ Create a New MASM Project
 1. Open **Visual Studio** → **File → New → Project**  
-2. Search for **“Empty Project”** (MASM projects are typically custom).  
+2. Search for **"Empty Project"** (MASM projects are typically custom).  
 3. Ensure the project is targeting **x64** architecture.  
-   - You can check this from the toolbar → “Solution Platforms” → select **x64**.
+   - You can check this from the toolbar → "Solution Platforms" → select **x64**.
 
 ---
 
 #### 2️⃣ Add Include Path
-Tell MASM where to find AsmEase64’s `.inc` files.
+Tell MASM where to find AsmEase64's `.inc` files.
 
 1. In **Solution Explorer**, right-click your project → **Properties**.  
 2. Under **Microsoft Macro Assembler → General**, set:  
@@ -236,7 +236,7 @@ This ensures the linker pulls in all procedures defined in the static library.
 
 ---
 
-#### ✅ You’re Done!
+#### ✅ You're Done!
 
 You can now build and run .asm projects that use **AsmEase64**.
 Visual Studio will automatically:
@@ -266,7 +266,7 @@ main ENDP
 END main
 ```
 
-**Build** → **Run**, and you’ll see your message in the console window.
+**Build** → **Run**, and you'll see your message in the console window.
 
 ---
 
@@ -678,7 +678,7 @@ AsmEase64 strictly follows the **Windows x64 ABI** (Microsoft x64 calling conven
 
 #### Stack Alignment:
 - **16-byte alignment** is maintained automatically
-- **Shadow space** is allocated internally by each procedure
+- **Shadow space (32 bytes) + alignment (8 bytes) = 40 bytes total** is allocated internally by each procedure
 - **You don't need to manage these manually** — `SAFE_PROLOGUE` and `SAFE_EPILOGUE` macros handle it
 
 #### What This Means For You:
@@ -968,6 +968,9 @@ T2: get arr[2] -> expect RAX=30, CF=0 ... PASS
 T3: get index==len -> expect ERR_OUT_OF_RANGE ... PASS
 ...
 ```
+
+> 💡 **Tip:** Tests also serve as **usage examples**. If you're unsure how to call a procedure, check the corresponding test file to see real-world usage patterns.
+
 ---
 
 ## License
