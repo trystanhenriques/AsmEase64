@@ -399,6 +399,7 @@ build hello
 Comprehensive documentation for all modules and procedures:
 
 - **[Complete Procedure Reference](docs/procs.md)** — Full list of all public procedures with parameters, return values, and error codes
+- **[Error Handling](#error-handling)** — Understanding AsmEase64's error model and codes *(critical for all modules)*
 - **[User Guide](docs/reference.md)** — In-depth usage guide and best practices
 - **[Example Programs](docs/examples/)** — Working code samples for each module
 
@@ -410,3 +411,211 @@ Comprehensive documentation for all modules and procedures:
 - **[Random Module](docs/random.md)** — Random number generation
 
 > 📝 **Note:** Detailed documentation is currently in development. Core API reference and examples will be added in an upcoming release.
+
+---
+
+## Error Handling
+
+AsmEase64 uses a **consistent, flag-based error model** across all modules to ensure predictable behavior and easy debugging.
+
+### Convention
+
+Every procedure follows the same pattern:
+
+**Success:**
+- `CF = 0` (Carry Flag cleared)
+- Return value (if any) is in `RAX`
+
+**Error:**
+- `CF = 1` (Carry Flag set)
+- `EAX` contains a numeric error code
+
+This dual-signal approach allows you to:
+1. Check success/failure with a single conditional jump (`jc` / `jnc`)
+2. Identify the specific error using the code in `EAX`
+
+---
+
+### Error Codes
+
+All error codes are defined in `errors.inc` and shared across modules:
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| `0` | `ERR_OK` | No error (reserved; not returned) |
+| `1` | `ERR_NULLPTR` | Required pointer was NULL |
+| `2` | `ERR_OUT_OF_RANGE` | Index or value out of valid range |
+| `3` | `ERR_LEN_ZERO` | Zero length where > 0 is required |
+| `4` | `ERR_CAPACITY` | Insufficient capacity (buffer too small) |
+| `5` | `ERR_OVERFLOW` | Arithmetic overflow (result doesn't fit in 64 bits) |
+
+> **Note:** Some error codes have module-specific aliases (e.g., `ERR_BADARG` = 3 in the random module). Refer to the numeric value for cross-module consistency.
+
+---
+
+### Usage Pattern
+
+#### Basic Error Checking
+```nasm
+; Example: Get array element
+lea  rcx, myArray
+mov  rdx, 5              ; length
+mov  r8,  2              ; index
+call arr_get_value
+jc   error_handler       ; Jump if CF=1 (error occurred)
+
+; Success path: RAX contains the value
+mov  result, rax
+jmp  continue
+
+error_handler:
+    ; EAX contains error code
+    cmp  eax, ERR_OUT_OF_RANGE
+    je   handle_bounds_error
+    cmp  eax, ERR_NULLPTR
+    je   handle_null_error
+    ; ... handle other cases or use a fallback
+```
+
+#### Minimal Check (Ignore Specific Error)
+If you only care about success/failure:
+```nasm
+call arr_reverse
+jc   failed              ; Jump on any error
+; ... success code ...
+failed:
+    ; handle failure generically
+```
+
+#### Error Propagation
+When calling multiple procedures, you can chain checks:
+```nasm
+call str_trim
+jc   cleanup             ; propagate error to caller
+
+call str_to_upper
+jc   cleanup
+
+; ... more operations ...
+
+cleanup:
+    ; EAX still contains the original error code
+    ; CF is still set
+    ret                  ; return error to caller
+```
+
+---
+
+### Module-Specific Notes
+
+#### Arrays (`arr_*`)
+- `ERR_NULLPTR` — Array base pointer is NULL
+- `ERR_LEN_ZERO` — Array length is 0 (not allowed for operations like `arr_max`)
+- `ERR_OUT_OF_RANGE` — Index is `>= len` (e.g., `arr_get_value`, `arr_set_value`)
+
+#### Strings (`str_*`)
+- `ERR_NULLPTR` — String pointer is NULL
+- `ERR_LEN_ZERO` — String length is 0 (where required, e.g., `str_copy`)
+- `ERR_CAPACITY` — Destination buffer too small (e.g., `str_copy` when `src_len > dst_cap`)
+
+#### Math (`math_*`)
+- `ERR_OVERFLOW` — Result exceeds 64-bit signed range (e.g., `math_power` with large exponents)
+- `ERR_BADARG` — Invalid arguments (e.g., `math_clamp` with `min > max`)
+
+#### Random (`rand_*`)
+- `ERR_BADARG` — Invalid range (e.g., `rand_range(0)` — max must be > 0)
+
+#### I/O (`io_*`)
+- **No errors currently** — I/O procedures use best-effort semantics:
+  - `CF=0` always (success flag set)
+  - `RAX=0` on write failure (e.g., invalid handle)
+  - Future versions may add error codes for handle failures
+
+---
+
+### Why This Model?
+
+✅ **Fast** — Single flag check (`jc`/`jnc`) is optimal on x86-64  
+✅ **Standard** — Aligns with native x86 conventions (like `cmp`, `sub`)  
+✅ **Predictable** — Same pattern everywhere; no surprises  
+✅ **Debuggable** — Numeric codes are easy to log and trace  
+✅ **Composable** — Errors propagate naturally through call chains  
+
+---
+
+### Common Pitfalls
+
+❌ **Forgetting to check CF**
+```nasm
+call arr_max
+mov  result, rax         ; ⚠️ RAX might contain an error code!
+```
+✅ **Always check CF first:**
+```nasm
+call arr_max
+jc   error
+mov  result, rax         ; ✅ Safe: we know CF=0
+```
+
+❌ **Checking RAX before CF**
+```nasm
+call arr_get_value
+cmp  rax, 0              ; ⚠️ Wrong: error code might be 0 (rare but possible)
+je   handle_zero
+```
+✅ **Check CF, then examine EAX if needed:**
+```nasm
+call arr_get_value
+jc   check_error_code    ; ✅ First check if error occurred
+; ... success path ...
+check_error_code:
+    cmp  eax, ERR_NULLPTR
+    ; ...
+```
+
+---
+
+### Advanced: Custom Error Handling
+
+You can wrap library procedures with your own error-handling layer:
+
+```nasm
+; Wrapper that prints error messages
+safe_arr_max PROC base:QWORD, len:QWORD
+    call arr_max
+    jnc  @success
+    
+    ; Error occurred - print message
+    push rax                     ; save error code
+    lea  rcx, err_msg
+    call io_print_string
+    pop  rax
+    mov  rcx, rax
+    call io_print_int            ; print error code
+    call io_print_newline
+    
+    stc                          ; restore CF=1
+    ret
+@success:
+    clc
+    ret
+safe_arr_max ENDP
+
+.data
+err_msg db "Array error: ", 0
+```
+
+---
+
+### Quick Reference Card
+
+| Check | Instruction | Jump Condition |
+|-------|-------------|----------------|
+| Success? | `jnc label` | CF=0 (no carry) |
+| Error? | `jc label` | CF=1 (carry set) |
+| Specific error? | `cmp eax, ERR_*` then `je` | After `jc` confirms error |
+
+**Remember:** 
+- ✅ Check `CF` first
+- ✅ Then check `EAX` for specifics
+- ✅ `RAX` contains result only when `CF=0`
