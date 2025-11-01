@@ -619,3 +619,305 @@ err_msg db "Array error: ", 0
 - ✅ Check `CF` first
 - ✅ Then check `EAX` for specifics
 - ✅ `RAX` contains result only when `CF=0`
+
+---
+
+## Library Design & Conventions
+
+AsmEase64 follows strict design principles to ensure consistency, safety, and ease of use across all modules.
+
+---
+
+### Naming Convention
+
+All procedures follow the pattern: **`<module>_<action>_<object>`**
+
+- **Module prefix:** Identifies the subsystem
+  - `io_` — Input/Output operations
+  - `arr_` — Array utilities
+  - `str_` — String utilities
+  - `math_` — Mathematical operations
+  - `rand_` — Random number generation
+  
+- **Action:** Verb describing what it does
+  - `print`, `get`, `set`, `copy`, `fill`, `reverse`, `compare`, `clamp`, etc.
+  
+- **Object:** What it operates on (when applicable)
+  - `string`, `char`, `int`, `value`, `max`, `min`, etc.
+
+#### Examples:
+```
+io_print_string     → I/O module, print action, string object
+arr_get_value       → Array module, get action, value object
+str_to_upper        → String module, to_upper action (transform)
+math_abs            → Math module, abs action (unary operation)
+rand_u64            → Random module, u64 type specifier
+```
+
+**Benefits:**
+- ✅ **Predictable** — You can guess procedure names without looking them up
+- ✅ **No collisions** — Module prefixes prevent naming conflicts with your code
+- ✅ **Searchable** — Easy to find all procedures in a module (e.g., search for `arr_`)
+
+---
+
+### Calling Convention
+
+AsmEase64 strictly follows the **Windows x64 ABI** (Microsoft x64 calling convention):
+
+#### Register Usage:
+| Purpose | Registers | Notes |
+|---------|-----------|-------|
+| **Arguments** | `RCX`, `RDX`, `R8`, `R9` | First 4 integer/pointer args |
+| **Return value** | `RAX` | 64-bit result or pointer |
+| **Stack args** | `[RSP+20h]`, `[RSP+28h]`, ... | 5th+ arguments (if needed) |
+| **Volatile** | `RAX`, `RCX`, `RDX`, `R8`-`R11` | Caller-saved; may be clobbered |
+| **Non-volatile** | `RBX`, `RBP`, `RDI`, `RSI`, `R12`-`R15` | Callee-saved; always preserved |
+| **XMM volatile** | `XMM0`-`XMM5` | Used for floating-point (e.g., `io_print_float`) |
+| **XMM non-volatile** | `XMM6`-`XMM15` | Preserved across calls |
+
+#### Stack Alignment:
+- **16-byte alignment** is maintained automatically
+- **Shadow space** is allocated internally by each procedure
+- **You don't need to manage these manually** — `SAFE_PROLOGUE` and `SAFE_EPILOGUE` macros handle it
+
+#### What This Means For You:
+```nasm
+; ✅ Correct usage
+mov  rcx, arg1          ; First argument
+mov  rdx, arg2          ; Second argument
+call arr_get_value
+; RAX now contains result (if CF=0)
+; RCX, RDX, R8-R11 may have changed
+; RBX, RBP, RSI, RDI, R12-R15 are unchanged
+
+; ❌ Wrong — don't assume non-volatile regs are free
+mov  rbx, 123           ; RBX is non-volatile
+call some_procedure     ; ✅ RBX will be preserved
+; RBX still == 123 after return
+```
+
+---
+
+### Error Handling Model
+
+See the **[Error Handling](#error-handling)** section for complete details.
+
+**Quick summary:**
+- **Success:** `CF = 0`, result in `RAX`
+- **Error:** `CF = 1`, error code in `EAX`
+- **Check pattern:** Always test `CF` first with `jc` or `jnc`
+
+This model is:
+- ✅ **Uniform** — Every procedure uses it (except best-effort I/O)
+- ✅ **Efficient** — Single flag check, no branching on success path
+- ✅ **Composable** — Errors propagate naturally through call chains
+
+---
+
+### Safety Guarantees
+
+#### 1. **No Hidden State** (Stateless Design)
+- All procedures (except `rand_*`) are **stateless**
+- Input is passed via registers/stack; output is returned in `RAX`
+- No reliance on global variables (except I/O handles, cached lazily)
+- **Thread-safety:** Most procedures are thread-safe; `rand_*` uses shared state (not thread-safe)
+
+#### 2. **Null-Safe**
+- All pointer parameters are validated before use
+- Returns `ERR_NULLPTR` (CF=1) if required pointer is NULL
+- You can pass NULL to optional parameters (documented per procedure)
+
+#### 3. **Range-Checked**
+- Array indices are bounds-checked: `index < len`
+- Returns `ERR_OUT_OF_RANGE` (CF=1) on violations
+- No buffer overruns or out-of-bounds access
+
+#### 4. **ABI-Compliant**
+- Non-volatile registers (`RBX`, `RBP`, `RDI`, `RSI`, `R12`-`R15`) are **always** preserved
+- You can safely use these in your code without worrying about library calls clobbering them
+- Stack is kept 16-byte aligned at all times
+
+#### 5. **Overlap-Safe** (Where Applicable)
+- Procedures like `arr_copy`, `str_copy` handle overlapping source/destination buffers correctly
+- Uses **memmove semantics**: automatically chooses forward/backward copy direction
+- Example:
+  ```nasm
+  ; Safe: copying within the same buffer
+  lea  rcx, buffer[8]    ; dst = buffer + 8
+  lea  r8,  buffer       ; src = buffer
+  mov  rdx, 100          ; dst_cap
+  mov  r9,  50           ; src_len
+  call str_copy          ; ✅ Works correctly even with overlap
+  ```
+
+---
+
+### Modularity
+
+Each subsystem is **independent and self-contained**:
+
+- ✅ **Use only what you need** — Include only the `.inc` files for modules you use
+- ✅ **No circular dependencies** — Modules don't depend on each other (except shared `errors.inc` and `macros.inc`)
+- ✅ **Small footprint** — Static linking includes only the procedures you call
+
+#### Example: Minimal Include
+```nasm
+; Only using I/O
+INCLUDE io.inc
+
+.data
+msg db "Hello!", 0
+
+.code
+main PROC
+    mov  rcx, OFFSET msg
+    call io_print_string
+    ret
+main ENDP
+END
+```
+
+#### Example: Full Include
+```nasm
+; Using multiple modules
+INCLUDE AsmEase64.inc    ; Includes all public APIs
+
+.code
+main PROC
+    ; Use I/O, arrays, strings, math, random...
+    call io_print_string
+    call arr_max
+    call str_trim
+    call math_abs
+    call rand_u64
+    ret
+main ENDP
+END
+```
+
+---
+
+### Macro System
+
+AsmEase64 uses **internal macros** to ensure consistency and reduce boilerplate:
+
+#### Procedure Frame Macros:
+- `SAFE_PROLOGUE` — Allocates 40 bytes (32 shadow + 8 alignment)
+- `SAFE_EPILOGUE` — Restores stack without modifying flags
+
+#### Error Macros:
+- `RET_OK` — Returns with `CF=0` (success)
+- `RET_ERR <code>` — Returns with `CF=1`, `EAX=<code>`
+
+#### Validation Macros:
+- `CHECK_NULL <reg>, <errcode>` — Validates pointer; returns error if NULL
+- `CHECK_BOUNDS <index>, <len>, <errcode>` — Validates index < len
+- `CHECK_LEN_NONZERO <reg>, <errcode>` — Ensures length > 0
+- `CHECK_CAPACITY <needed>, <cap>, <errcode>` — Ensures needed <= cap
+- `CHECK_ORDER <a>, <b>, <errcode>` — Ensures a <= b (for ranges)
+
+**You typically don't need these macros** — they're internal to the library. But if you're extending AsmEase64 or writing similar procedures, they're available in `macros.inc`.
+
+---
+
+### Constants
+
+#### Special Values:
+- `STR_NPOS = 0xFFFFFFFFFFFFFFFF` — "Not found" sentinel (string search operations)
+
+#### Error Codes:
+See `errors.inc` for the complete list (documented in [Error Handling](#error-handling)).
+
+---
+
+### Design Philosophy
+
+**Three core principles guide AsmEase64:**
+
+1. **Ease of Use**
+   - Assembly is hard enough; the library shouldn't add complexity
+   - Consistent patterns mean you learn once, apply everywhere
+   - Clear error messages (numeric codes with symbolic names)
+
+2. **Safety Without Overhead**
+   - Validate inputs to prevent crashes and undefined behavior
+   - But keep the fast path fast (checks compile to 1-2 instructions)
+   - No dynamic allocation; no hidden costs
+
+3. **Transparency**
+   - Source code is fully documented and readable
+   - You can trace exactly what each procedure does
+   - No "magic" — if you need to understand or modify behavior, the code is there
+
+---
+
+### Extending the Library
+
+Want to add your own procedures that fit the AsmEase64 style?
+
+**Follow these guidelines:**
+
+1. ✅ Use the naming convention: `module_action_object`
+2. ✅ Follow Windows x64 ABI
+3. ✅ Use `SAFE_PROLOGUE` / `SAFE_EPILOGUE` or equivalent
+4. ✅ Return errors via CF/EAX (use `RET_ERR` macro)
+5. ✅ Validate inputs with `CHECK_*` macros
+6. ✅ Preserve non-volatile registers (`RBX`, `RBP`, `RDI`, `RSI`, `R12`-`R15`)
+7. ✅ Document parameters, return values, errors, and clobbers in comments
+
+**Example template:**
+```nasm
+;________________________________________
+; mymodule_my_operation(param1, param2)
+;________________________________________
+; RCX = param1 (description)
+; RDX = param2 (description)
+; Returns:
+;   CF=0, RAX = result      ; success
+;   CF=1, EAX = ERR_*       ; error
+; Errors:
+;   ERR_NULLPTR if param1 == NULL
+; Notes:
+;   - Any special behavior or edge cases
+;________________________________________
+mymodule_my_operation PROC param1:QWORD, param2:QWORD
+    SAFE_PROLOGUE
+    
+    CHECK_NULL rcx, ERR_NULLPTR
+    
+    ; ... your implementation ...
+    
+    mov  rax, result
+    RET_OK
+mymodule_my_operation ENDP
+```
+
+---
+
+### Performance Considerations
+
+- **Minimal branching** — Success paths are optimized for fall-through
+- **Register allocation** — Hot values stay in registers; stack use is minimized
+- **No hidden costs** — Every operation has predictable, constant-time overhead
+- **Inlining opportunity** — Most procedures are small enough that you could inline manually if profiling shows benefit
+- **SIMD where appropriate** — `rep stosq`, `rep movsq` used for bulk operations
+
+**Rule of thumb:** If you're calling a procedure in a tight loop (e.g., processing millions of strings), consider moving the loop *into* a custom procedure to amortize call overhead.
+
+---
+
+### What AsmEase64 Is NOT
+
+To set expectations clearly:
+
+❌ **Not a high-level language** — You still write assembly; the library just handles tedious parts  
+❌ **Not a standard library replacement** — It's a toolkit, not libc  
+❌ **Not cryptographically secure** — Random module uses fast PRNG, not CSPRNG  
+❌ **Not cross-platform** — Windows x64 only (uses Win32 console APIs)  
+❌ **Not thread-safe globally** — Most procedures are, but `rand_*` has shared state  
+
+**What it IS:**
+✅ A **productivity booster** for x64 assembly development  
+✅ A **learning tool** for understanding calling conventions and low-level patterns  
+✅ A **foundation** you can build on or customize for your needs
