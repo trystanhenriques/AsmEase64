@@ -46,26 +46,60 @@ AsmEase64 is organized into modular subsystems, each designed to handle a specif
 
 ### Minimal Example
 
-A simple “Hello, world” using AsmEase64’s I/O subsystem:  
+A simple program demonstrating multiple AsmEase64 features:
 
 ```nasm
-; Example: hello.asm
+; Example: demo.asm
 include AsmEase64.inc
 
 .data
-msg db "Hello from AsmEase64!", 0
+numbers QWORD 42, 15, 88, 3, 67
+arrLen  QWORD 5
+msg     db "Array max value: ", 0
 
 .code
 main PROC
-    mov rcx, OFFSET msg        ; RCX = pointer to string
-    call io_print_string       ; prints the string
-    call io_print_newline      ; prints CRLF ("\r\n")
+    ; Print message
+    mov rcx, OFFSET msg
+    call io_print_string
+    
+    ; Find max value in array
+    lea rcx, numbers           ; RCX = array base
+    mov rdx, arrLen            ; RDX = length
+    call arr_max               ; Result in RAX
+    jc error                   ; Check for errors
+    
+    ; Print the max value (88)
+    mov rcx, rax
+    call io_print_int
+    call io_print_newline
+    
+    ; Calculate absolute value of -100
+    mov rcx, -100
+    call math_abs              ; Result in RAX = 100
+    
+    mov rcx, rax
+    call io_print_int
+    call io_print_newline
+    
+    xor ecx, ecx
+    ret
+
+error:
+    mov rcx, rax               ; Print error code
+    call io_print_int
     ret
 main ENDP
-END main
+END
 ```
 
-No manual stack alignment or shadow-space allocation needed —
+**Output:**
+```
+Array max value: 88
+100
+```
+
+No manual stack alignment or shadow-space allocation needed —  
 AsmEase64 handles all of it internally so your code stays clean and predictable.
 
 ## Project Structure
