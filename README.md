@@ -968,4 +968,21 @@ T2: get arr[2] -> expect RAX=30, CF=0 ... PASS
 T3: get index==len -> expect ERR_OUT_OF_RANGE ... PASS
 ...
 ```
+---
 
+## License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+### Summary
+
+You are free to:
+- ✅ Use this library in personal or commercial projects
+- ✅ Modify the source code
+- ✅ Distribute copies or modified versions
+
+**Requirements:**
+- Include the original copyright notice and license text in any copies or substantial portions
+
+**Disclaimer:**
+- This software is provided "as is" without warranty of any kind
