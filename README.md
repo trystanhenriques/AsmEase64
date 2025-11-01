@@ -81,4 +81,63 @@ Each folder contains focused components — headers, source files, and test prog
   - `procs.md` – Detailed list of all public procedures  
   - `reference.md` – User-friendly guide  
   - `examples/` – Example `.asm` programs demonstrating each module
+ 
+## Getting Started
+
+### Prerequisites
+Before using AsmEase64, make sure you have the following installed:
+
+- **Operating System:** Windows 10 or later (x64 only)
+- **Assembler:** **MASM** (ML64) — included with Visual Studio or the Windows SDK
+- **Linker:** `link.exe` (bundled with the Visual Studio toolchain)
+- **Optional IDE:** Visual Studio 2019 or later
+- **Knowledge:** Basic familiarity with x64 Assembly and the Windows calling convention
+
+### Installation
+
+AsmEase64 can be installed in two ways — by downloading the prebuilt release package or by cloning the repository.
+
+#### 🟢 Option 1 — Download the Prebuilt Release (Recommended)
+
+1. Visit the **[Releases](../../releases)** page on GitHub.  
+2. Download the latest archive (for example, `AsmEase64.zip`).  
+3. Extract the archive to a convenient location, such as:  
+   `C:\AsmEase64\`  
+4. After extraction, your folder should contain:
+
+   - **`inc/`** – Public include files (`.inc`)  
+     - `array.inc`  
+     - `AsmEase64.inc`  
+     - `errors.inc`  
+     - `io.inc`  
+     - `macros.inc`  
+     - `math.inc`  
+     - `random.inc`  
+     - `string.inc`  
+     - `win32_console.inc`  
+   - **`lib/`** – Prebuilt static library
+     - `AsmEase64.lib`
+
+You only need these two directories:
+- **`inc/`** → Include in your MASM project for access to all public procedures  
+- **`lib/`** → Link against the precompiled library during build
+
+#### 🟣 Option 2 — Clone the Repository
+If you want the full source for editing or debugging:
+```bash
+git clone https://github.com/<yourusername>/AsmEase64.git
+cd AsmEase64
+```
+
+After cloning, you will need to build the static library (AsmEase64.lib) yourself
+using **MASM (ml64)** and the Microsoft linker **(link.exe)**.
+
+Once the library is installed, you can begin assembling and linking programs with AsmEase64 using either:
+
+- The command line (**ml64 + link.exe**)
+
+- Or **Visual Studio** (by adding include and library paths in project settings)
+
+These are detailed in the next sections.
+
 
