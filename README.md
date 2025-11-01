@@ -140,4 +140,96 @@ Once the library is installed, you can begin assembling and linking programs wit
 
 These are detailed in the next sections.
 
+### Visual Studio Integration
 
+You can also use AsmEase64 directly inside **Visual Studio** for assembling, linking, and debugging your programs with a GUI workflow.
+
+Follow these steps to configure your project:
+
+---
+
+#### 1️⃣ Create a New MASM Project
+1. Open **Visual Studio** → **File → New → Project**  
+2. Search for **“Empty Project”** (MASM projects are typically custom).  
+3. Ensure the project is targeting **x64** architecture.  
+   - You can check this from the toolbar → “Solution Platforms” → select **x64**.
+
+---
+
+#### 2️⃣ Add Include Path
+Tell MASM where to find AsmEase64’s `.inc` files.
+
+1. In **Solution Explorer**, right-click your project → **Properties**.  
+2. Under **Microsoft Macro Assembler → General**, set:  
+   - **Include Paths:** `C:\AsmEase64\inc` (or wherever it is stored)
+
+
+   <img width="780" height="463" alt="image" src="https://github.com/user-attachments/assets/f7470154-5b96-4baa-bbd1-0907a1a0e141" />
+
+
+
+This lets you use:
+```asm
+include AsmEase64.inc
+```
+from anywhere in your project without specifying full paths.
+
+---
+
+#### 3️⃣ Add Library Path
+
+Let the linker know where to find `AsmEase64.lib`.
+
+1. Go to **Configuration Properties** → **Linker** → **General**
+2. Set **Additional Library Directories** to:
+
+`C:\AsmEase64\lib` (or wherever it is stored)
+
+<img width="791" height="507" alt="image" src="https://github.com/user-attachments/assets/8a5a21e0-7925-4989-925a-11928b606375" />
+
+---
+
+#### 4️⃣ Link the Library
+
+Tell the linker which .lib file to use.
+
+1. Under **Linker** → **Input**, set:
+    - **Additional Dependencies**: `AsmEase64.lib`
+
+This ensures the linker pulls in all procedures defined in the static library.
+
+<img width="789" height="509" alt="image" src="https://github.com/user-attachments/assets/630c1671-ebbc-4c05-90f2-09e3011d9e94" />
+
+---
+
+#### ✅ You’re Done!
+
+You can now build and run .asm projects that use **AsmEase64**.
+Visual Studio will automatically:
+
+- Assemble .asm files with ml64
+- Link them with your chosen .lib
+- Launch the executable in the debugger
+
+---
+
+#### Example
+
+```nasm
+; hello.asm
+include AsmEase64.inc
+
+.data
+msg db "Hello from AsmEase64 inside Visual Studio!", 0
+
+.code
+main PROC
+    mov rcx, OFFSET msg
+    call io_print_string
+    call io_print_newline
+    ret
+main ENDP
+END main
+```
+
+**Build** → **Run**, and you’ll see your message in the console window.
