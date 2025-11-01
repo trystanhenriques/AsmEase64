@@ -921,3 +921,51 @@ To set expectations clearly:
 ✅ A **productivity booster** for x64 assembly development  
 ✅ A **learning tool** for understanding calling conventions and low-level patterns  
 ✅ A **foundation** you can build on or customize for your needs
+
+---
+
+## Testing
+
+AsmEase64 includes a comprehensive test suite to validate all modules and ensure correctness across edge cases.
+
+### Test Structure
+
+Tests are located in the `tests/` directory, with one test file per module:
+
+- **`arr_tests.asm`** — Array operations (get, set, fill, copy, reverse, max/min, etc.)
+- **`io_tests.asm`** — Console I/O (print functions for strings, integers, hex, floats, etc.)
+- **`str_tests.asm`** — String utilities (copy, length, compare, trim, case conversion, search/replace)
+- **`math_tests.asm`** — Math helpers (abs, clamp, sign, power, parity)
+- **`random_tests.asm`** — Random number generation (seeding, determinism, ranges)
+
+### Running Tests
+
+Each test file is a standalone console application that:
+1. Calls procedures with various inputs (valid, invalid, edge cases)
+2. Checks return values and error codes
+3. Prints `PASS` or `FAIL` for each test case
+
+**To run tests:**
+1. Build the test program (e.g., `arr_tests.asm`) as a console application
+2. Link against `AsmEase64.lib`
+3. Run the executable from the command line
+4. Review console output for any failures
+
+### What's Tested
+
+✅ **Error conditions** — NULL pointers, zero lengths, out-of-bounds indices  
+✅ **Edge cases** — Empty inputs, boundary values, INT64_MIN/MAX  
+✅ **Correctness** — Expected outputs for typical inputs  
+✅ **Safety** — Overlap handling (memmove semantics), buffer overrun prevention  
+✅ **Determinism** — Random module produces consistent output for same seed  
+
+### Example Test Output
+
+```
+Running array sanity tests...
+T1: get NULL base -> expect ERR_NULLPTR ... PASS
+T2: get arr[2] -> expect RAX=30, CF=0 ... PASS
+T3: get index==len -> expect ERR_OUT_OF_RANGE ... PASS
+...
+```
+
