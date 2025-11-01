@@ -213,7 +213,7 @@ Visual Studio will automatically:
 
 ---
 
-#### Example
+### Example
 
 ```nasm
 ; hello.asm
@@ -233,3 +233,127 @@ END main
 ```
 
 **Build** → **Run**, and you’ll see your message in the console window.
+
+---
+
+### Command-Line Setup (ML64 + LINK)
+
+If you prefer to build your Assembly programs manually from the command line rather than through Visual Studio, you can use the MASM (ML64) assembler and Microsoft LINK utilities included with the Visual Studio toolchain.
+
+---
+
+#### 🧱 Folder Layout
+For this example, assume you've installed AsmEase64 to:
+
+```
+C:\AsmEase64\
+```
+
+and that your project file is:
+
+```
+C:\Projects\MyTest\hello.asm
+```
+
+---
+
+#### Step 1 — Assemble Your Source
+Open **x64 Native Tools Command Prompt for VS** (installed with Visual Studio)  
+and navigate to your project folder:
+
+```bash
+cd C:\Projects\MyTest
+```
+
+Then assemble your program:
+
+```bash
+ml64 /c /I "C:\AsmEase64\inc" /W3 hello.asm
+```
+
+**Explanation of flags:**
+
+| Flag | Meaning |
+|------|---------|
+| `/c` | Assemble only (don't link yet) |
+| `/I` | Add include path for AsmEase64 `.inc` files |
+| `/W3` | Set warning level (catches common mistakes) |
+
+After this step, you should have `hello.obj` in the same directory.
+
+---
+
+#### Step 2 — Link the Object File
+
+Next, link the assembled file with the AsmEase64 static library:
+
+```bash
+link hello.obj "C:\AsmEase64\lib\AsmEase64.lib" /SUBSYSTEM:CONSOLE
+```
+
+**Explanation of flags:**
+
+| Flag | Meaning |
+|------|---------|
+| `/SUBSYSTEM:CONSOLE` | Produces a console application |
+| `"AsmEase64.lib"` | Links your program with the library's compiled procedures |
+
+This produces `hello.exe` in the same directory.
+
+---
+
+#### Step 3 — Run the Program
+
+```bash
+hello.exe
+```
+
+You should see:
+
+```
+Hello from AsmEase64!
+```
+
+---
+
+#### ✅ Full Example (One-Liner)
+
+For convenience, here's the complete build command:
+
+```bash
+ml64 /c /I "C:\AsmEase64\inc" /W3 hello.asm && link hello.obj "C:\AsmEase64\lib\AsmEase64.lib" /SUBSYSTEM:CONSOLE
+```
+
+---
+
+#### 🧠 Notes
+
+- Always use **x64 Native Tools Command Prompt** — it configures the correct paths for `ml64.exe` and `link.exe`.
+- You can create a simple `build.bat` script with these commands to automate future builds.
+- If you need debugging symbols for Visual Studio, add `/Zi` to the `ml64` command.
+
+---
+
+#### 📝 Optional: Create a Build Script
+
+Save this as `build.bat` in your project folder:
+
+```batch
+@echo off
+ml64 /c /I "C:\AsmEase64\inc" /W3 %1.asm
+if errorlevel 1 goto error
+link %1.obj "C:\AsmEase64\lib\AsmEase64.lib" /SUBSYSTEM:CONSOLE
+if errorlevel 1 goto error
+echo Build successful!
+%1.exe
+goto end
+:error
+echo Build failed!
+:end
+```
+
+Then simply run:
+
+```bash
+build hello
+```
