@@ -29,7 +29,7 @@ Every procedure follows the Windows x64 calling convention, uses standardized er
 - Clean, predictable naming scheme (`prefix_action_object`).  
 - Ready-to-extend architecture for future utilities, debugging, and system operations.
 
-## ⚙️ Features
+## Features
 
 AsmEase64 is organized into modular subsystems, each designed to handle a specific area of low-level development with consistent conventions and safety guarantees.
 
@@ -41,4 +41,18 @@ AsmEase64 is organized into modular subsystems, each designed to handle a specif
 - ✅ **Random Number Generation (`rand_*`)** — Lightweight 64-bit PRNG with seeding, uniform ranges, and boolean generation.  
 - 🔜 **Debug Module (`dbg_*`)** — Planned stack and register dump utilities for runtime inspection.  
 - 🔜 **Utility Module (`util_*`)** — Planned general-purpose helpers (timing, memory, conversions, assertions).
+
+## Project Structure
+
+AsmEase64 is organized into modular directories for clarity and maintainability.  
+Each folder contains focused components — headers, source files, and test programs — that work together to form the complete library.
+
+- **`inc/`** – Public include files (`.inc`) containing PROC prototypes and shared constants.  
+- **`src/`** – Core implementation files (`.asm`) for each module.  
+- **`tests/`** – Assembly test programs used for validation and development.  
+- **`README.md`** – Project overview and documentation entry point.  
+- **`docs/`** – Comprehensive documentation and examples  
+  - `procs.md` – Detailed list of all public procedures  
+  - `reference.md` – User-friendly IMGUI-style guide  
+  - `examples/` – Example `.asm` programs demonstrating each module
 
