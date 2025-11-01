@@ -391,3 +391,22 @@ Then simply run:
 ```bash
 build hello
 ```
+
+---
+
+## Documentation
+
+Comprehensive documentation for all modules and procedures:
+
+- **[Complete Procedure Reference](docs/procs.md)** — Full list of all public procedures with parameters, return values, and error codes
+- **[User Guide](docs/reference.md)** — In-depth usage guide and best practices
+- **[Example Programs](docs/examples/)** — Working code samples for each module
+
+### Module-Specific Docs:
+- **[I/O Module](docs/io.md)** — Console input/output procedures
+- **[Array Module](docs/arrays.md)** — QWORD array operations
+- **[String Module](docs/strings.md)** — String manipulation utilities
+- **[Math Module](docs/math.md)** — Mathematical operations
+- **[Random Module](docs/random.md)** — Random number generation
+
+> 📝 **Note:** Detailed documentation is currently in development. Core API reference and examples will be added in an upcoming release.
