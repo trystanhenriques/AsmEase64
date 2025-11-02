@@ -26,10 +26,10 @@ A modern, easy-to-use x86-64 Assembly library for Windows that streamlines low-l
 
 ## Overview
 
-AsmEase64 is a modular x86-64 Assembly library built for Windows developers using MASM.  
+**AsmEase64** is a modular x86-64 Assembly library built for Windows developers using **MASM**.  
 It provides a clean, consistent set of low-level procedures that simplify the most repetitive and error-prone parts of assembly development — including stack management, calling conventions, and console I/O.
 
-Instead of manually dealing with shadow space, alignment, or register preservation, AsmEase64 abstracts these details so you can focus purely on your logic.  
+Instead of manually dealing with shadow space, alignment, or register preservation, **AsmEase64** abstracts these details so you can focus purely on your logic.  
 Every procedure follows the Windows x64 calling convention, uses standardized error codes, and maintains consistent naming and parameter rules across all modules.
 
 ### Design Goals
@@ -172,29 +172,31 @@ For **complete installation instructions** including:
 - Command-line setup (ml64 + link)
 - Build scripts and troubleshooting
 
-See the full guide: **[docs/Getting-Started.md](docs/Getting-Started.md)**
+See the full guide: **[docs/Getting-Started.md](docs/getting-started.md)**
 
 ---
 
 ## Documentation
 
 ### Core Guides
-- **[Getting Started](docs/Getting-Started.md)** — Installation, setup, Visual Studio integration, command-line builds
+- **[Getting Started](docs/getting-started.md)** — Installation, setup, Visual Studio integration, command-line builds
 - **[Error Handling](docs/error-handling.md)** — Complete guide to the CF/EAX error model, error codes, and patterns
 
 ### API Reference
-Each `.inc` header file contains complete API documentation with parameter descriptions, return values, and error codes:
+Detailed API documentation for each module (parameters, return values, error codes, usage notes):
 
-- **[array.inc](inc/array.inc)** — Array operations (get/set, fill, copy, reverse, max/min)
-- **[string.inc](inc/string.inc)** — String utilities (copy, compare, trim, case conversion, search/replace)
-- **[io.inc](inc/io.inc)** — Console I/O (print functions for all data types)
-- **[math.inc](inc/math.inc)** — Math helpers (abs, clamp, sign, power, parity)
-- **[random.inc](inc/random.inc)** — Random number generation (seed, ranges, booleans)
+- **[Arrays API](docs/api/arrays.md)** — Array operations (get/set, fill, copy, reverse, max/min)
+- **[Strings API](docs/api/strings.md)** — String utilities (copy, compare, trim, case conversion, search/replace)
+- **[I/O API](docs/api/io.md)** — Console I/O (print functions for all data types)
+- **[Math API](docs/api/math.md)** — Math helpers (abs, clamp, sign, power, parity)
+- **[Random API](docs/api/random.md)** — Random number generation (seed, ranges, booleans)
+
+> 💡 **Quick Reference:** Each `.inc` header file ([array.inc](inc/array.inc), [string.inc](inc/string.inc), [io.inc](inc/io.inc), [math.inc](inc/math.inc), [random.inc](inc/random.inc)) also contains inline API documentation.
 
 ### Usage Examples 🚧
 The `docs/examples/` directory is **under construction**. In the meantime:
 - Check the **test files** (`tests/*.asm`) for working examples of every function
-- Refer to the **`.inc` headers** for inline documentation
+- Refer to the **API reference** above for detailed usage patterns
 
 ---
 
