@@ -1,14 +1,8 @@
-
 # I/O Module API Reference
 
 The I/O module (`io_*`) provides console input/output procedures for Windows x64.
 
 All procedures use **best-effort semantics** — they attempt to write to stdout but do not set `CF=1` on write failures (except for `io_print_string` which returns `ERR_NULLPTR` for NULL pointers).
-
-**Key Features:**
-- Uses `WriteFile` directly (works with console or redirected stdout/pipes)
-- Lazy handle initialization — no need to call `io_init()` explicitly
-- Automatic stack alignment and shadow space management
 
 ---
 
@@ -30,6 +24,27 @@ All procedures use **best-effort semantics** — they attempt to write to stdout
 
 ### Floating-Point Output
 - [io_print_float](#io_print_float) — Print IEEE-754 double (decimal)
+
+---
+
+## Module Overview
+
+The I/O module uses Windows console APIs (`WriteFile`, `GetStdHandle`) to provide output functionality.
+
+### Key Features
+- ✅ **No manual linking required** — `kernel32.lib` is linked automatically via `win32_console.inc`
+- ✅ **Works with redirection** — Output works with console, pipes, and file redirection
+- ✅ **Binary-safe** — Can write any byte value (including `0x00`)
+- ✅ **Lazy initialization** — Stdout handle is fetched automatically on first use
+- ✅ **Thread-safe handles** — Console handles are cached in module-private state
+
+### Windows APIs Used
+| API | Purpose |
+|-----|---------|
+| `GetStdHandle` | Fetch stdout/stdin handles (called lazily) |
+| `WriteFile` | Write bytes to stdout (works with console and pipes) |
+
+> **Note:** All procedures follow the Windows x64 calling convention and preserve non-volatile registers (`RBX`, `RBP`, `RDI`, `RSI`, `R12`-`R15`).
 
 ---
 
@@ -58,6 +73,7 @@ None
 - Safe to call multiple times (no-op if already initialized)
 - Not required — other `io_*` procedures fetch handles lazily
 - May improve performance if called once at startup (avoids repeated `GetStdHandle` calls)
+- Caches handles in module-private global state
 
 #### Example
 ```nasm
@@ -69,6 +85,7 @@ main PROC
     
     ret
 main ENDP
+END main
 ```
 
 ---
@@ -104,6 +121,7 @@ None (best-effort write; does not return `ERR_*`)
 - Works with console or redirected stdout (pipes, files)
 - Does not require `io_init()` — stdout handle fetched lazily
 - No error flag on failure — check `RAX==0` if you need to detect write failure
+- Uses `WriteFile` internally (works with redirection)
 
 #### Example
 ```nasm
@@ -115,6 +133,10 @@ call io_print_char       ; Prints: newline (LF)
 
 mov  rcx, 0x41
 call io_print_char       ; Prints: A (same as 'A')
+
+; Binary-safe: write NULL byte
+mov  rcx, 0x00
+call io_print_char       ; Writes: 0x00 (won't terminate string)
 ```
 
 ---
@@ -150,6 +172,7 @@ io_print_string(strz)
 - Empty strings (`""`) return `CF=0`, `RAX=0` (success, 0 bytes written)
 - Uses `WriteFile` — works with console or redirected stdout
 - **NULL check is the only error** — write failure returns `RAX=0` but `CF=0`
+- Only I/O procedure that sets `CF=1` on error (NULL pointer)
 
 #### Example
 ```nasm
@@ -161,7 +184,7 @@ empty db 0
 ; Print normal string
 lea  rcx, msg
 call io_print_string     ; Prints: Hello, World!
-                         ; RAX = 13 (bytes written)
+                         ; CF=0, RAX = 13 (bytes written)
 
 ; Print empty string
 lea  rcx, empty
@@ -173,8 +196,15 @@ xor  rcx, rcx
 call io_print_string
 jc   error               ; CF=1, EAX=ERR_NULLPTR
 
+; Continue...
+jmp  continue
+
 error:
-    ; Handle error
+    ; Handle NULL pointer error
+    cmp  eax, ERR_NULLPTR
+    je   handle_null
+
+continue:
 ```
 
 ---
@@ -202,9 +232,10 @@ None (best-effort write; does not return `ERR_*`)
 **Volatile registers** (`RAX`, `RCX`, `RDX`, `R8`-`R11`)
 
 #### Notes
-- Prints Windows-style newline (`\r\n` = CR+LF)
+- Prints Windows-style newline (`\r\n` = CR+LF = 0x0D 0x0A)
 - Works with console or redirected stdout
 - Does not require `io_init()` — stdout handle fetched lazily
+- Always writes 2 bytes (or 0 on failure)
 
 #### Example
 ```nasm
@@ -275,8 +306,7 @@ mov  rcx, 0
 call io_print_int        ; Prints: 0
                          ; RAX = 1
 
-mov  rcx, 8000000000000000h
-neg  rcx
+mov  rcx, 8000000000000000h  ; INT64_MIN
 call io_print_int        ; Prints: -9223372036854775808
                          ; RAX = 20
 ```
@@ -459,12 +489,12 @@ call io_print_binary     ; Prints: 00000101
 
 mov  rcx, 8000000000000000h  ; 1 << 63
 mov  rdx, 0
-call io_print_binary     ; Prints: 1000000000000000... (64 bits)
+call io_print_binary     ; Prints: 1000000000000000000000000000000000000000000000000000000000000000
                          ; RAX = 64
 
 mov  rcx, -1             ; 0xFFFFFFFFFFFFFFFF
 mov  rdx, 0
-call io_print_binary     ; Prints: 1111111111111111... (64 ones)
+call io_print_binary     ; Prints: 1111111111111111111111111111111111111111111111111111111111111111
                          ; RAX = 64
 ```
 
@@ -512,6 +542,7 @@ None (best-effort write; does not return `ERR_*`)
 - **Negative zero (`-0.0`)** prints as `"0"` (no minus sign)
 - **Rounding:** Uses "round half up" (e.g., `1.999` with `precision=2` → `"2.00"`)
 - Pass value as **raw bits** (use `QWORD` representation, not `XMM` register)
+- Preserves all non-volatile registers internally
 
 #### Example
 ```nasm
@@ -519,7 +550,7 @@ None (best-effort write; does not return `ERR_*`)
 d_zero   real8 0.0
 d_one    real8 1.0
 d_neg    real8 -1.25
-d_pi     real8 3.14159265
+d_pi     real8 3.14159265358979323846
 
 .code
 ; Zero with precision 0
@@ -632,11 +663,28 @@ call io_print_newline
 ; 0xDEADBEEF
 ```
 
+### Printing Binary with Prefix
+```nasm
+.data
+prefix db "0b", 0
+
+.code
+lea  rcx, prefix
+call io_print_string
+mov  rcx, 42
+mov  rdx, 8              ; Min 8 bits
+call io_print_binary
+call io_print_newline
+
+; Output:
+; 0b00101010
+```
+
 ### Multi-Line Report
 ```nasm
 .data
 header db "=== Report ===", 0
-sep    db "---", 0
+sep    db "---------------", 0
 
 .code
 ; Header
@@ -652,19 +700,107 @@ call io_print_newline
 ; Content...
 ```
 
+### Debug Output (Register Dump)
+```nasm
+.data
+reg_fmt db "RAX: 0x", 0
+
+.code
+; Print register value in hex
+lea  rcx, reg_fmt
+call io_print_string
+mov  rcx, rax            ; Value to print
+mov  rdx, 16             ; 16 hex digits
+call io_print_hex
+call io_print_newline
+
+; Output:
+; RAX: 0x00000000DEADBEEF
+```
+
+### Error Handling Pattern
+```nasm
+.data
+msg db "Hello", 0
+
+.code
+lea  rcx, msg
+call io_print_string
+jc   error               ; Only io_print_string sets CF=1
+
+; Success path
+test rax, rax            ; Check if any bytes written
+jz   write_failed        ; RAX=0 means write failed (but CF=0)
+
+jmp  continue
+
+error:
+    ; Handle NULL pointer (CF=1, EAX=ERR_NULLPTR)
+    cmp  eax, ERR_NULLPTR
+    je   handle_null
+
+write_failed:
+    ; Handle write failure (CF=0, RAX=0)
+    ; ... retry or log error
+
+continue:
+```
+
 ---
 
 ## Performance Notes
 
-- **Lazy handle initialization:** First call to any `io_*` procedure fetches stdout handle
+- **Lazy handle initialization:** First call to any `io_*` procedure fetches stdout handle via `GetStdHandle`
 - **Call `io_init()` once** at startup to cache handles if making many I/O calls
 - **String concatenation:** Build strings in memory, then call `io_print_string` once (faster than multiple calls)
 - **WriteFile overhead:** Each call has syscall overhead — batch output when possible
+- **Floating-point conversion:** `io_print_float` is more expensive than integer printing due to decimal conversion
+
+### Optimization Tips
+1. ✅ **Batch writes** — Build complete output strings before printing
+2. ✅ **Cache handles** — Call `io_init()` once at program start
+3. ✅ **Avoid repeated calls** — Prefer one `io_print_string` over multiple `io_print_char`
+4. ✅ **Use appropriate types** — `io_print_uint` is slightly faster than `io_print_int` for known positive values
+
+---
+
+## Thread Safety
+
+- **Handle caching** uses module-private global state (`g_stdout`, `g_stdin`)
+- **Not thread-safe** if multiple threads call I/O procedures before `io_init()`
+- **Best practice:** Call `io_init()` once in main thread before spawning other threads
+- **After initialization:** Safe for concurrent reads (all threads use cached handle)
+
+---
+
+## Redirection & Piping
+
+All I/O procedures work correctly with:
+- ✅ **Console output** — Normal terminal display
+- ✅ **File redirection** — `program.exe > output.txt`
+- ✅ **Pipe redirection** — `program.exe | another_program.exe`
+
+Example:
+```bash
+# Normal console
+C:\> myprogram.exe
+Hello, World!
+
+# File redirection
+C:\> myprogram.exe > output.txt
+# output.txt now contains: Hello, World!
+
+# Pipe to another program
+C:\> myprogram.exe | findstr "Hello"
+Hello, World!
+```
 
 ---
 
 ## See Also
 
-- [Error Handling Guide](../error-handling.md) — Error model reference
+- [Error Handling Guide](../error-handling.md) — Complete error model reference
 - [I/O Examples](../examples/io-demo.asm) — Working code samples
 - [Getting Started](../getting-started.md) — Installation and setup
+- [Array Module](arrays.md) — QWORD array operations
+- [String Module](strings.md) — String manipulation
