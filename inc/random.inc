@@ -27,7 +27,7 @@ rand_s64            PROTO
 ;---------------------------------------------------------
 ; rand_bool()
 ; Returns: CF=0, AL = 0 or 1 (RAX zero-extended).
-; Notes: derived from rand_u64’s low bit (or equivalent).
+; Returns: CF=1, EAX=ERR_BADARG if min >= max
 ;---------------------------------------------------------
 rand_bool           PROTO
 
